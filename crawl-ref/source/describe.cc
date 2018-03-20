@@ -1631,6 +1631,11 @@ static string _describe_armour(const item_def &item, bool verbose)
                            "weaponry, such as bows and javelins (Slay+4).";
             break;
 
+        case SPARM_UNARMED:
+            description += "It improves your ability to hit with unarmed "
+                           "attacks (+4 to hit).";
+            break;
+
         // These are only for scarves.
         case SPARM_REPULSION:
             description += "It protects its wearer by repelling missiles.";
