@@ -646,6 +646,10 @@ static const ability_def Ability_List[] =
       0, 0, 0, 0, {fail_basis::invo}, abflag::none },
     { ABIL_CONVERT_TO_BEOGH, "Convert to Beogh",
       0, 0, 0, 0, {fail_basis::invo}, abflag::none },
+    { ABIL_LEARN_SHAPE, "Learn Shape",
+      0, 0, 125, 0, {fail_basis::invo}, abflag::none },
+    { ABIL_CHANGE_SHAPE, "Change Shape",
+      1, 0, 125, 0, {fail_basis::xl, 40, 5}, abflag::none },
 };
 
 static const ability_def& get_ability_def(ability_type abil)
@@ -1798,6 +1802,22 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
     // statement... it's assumed that only failures have returned! - bwr
     switch (abil.ability)
     {
+    case ABIL_CHANGE_SHAPE:
+    // AMS
+        fail_check();
+        potionlike_effect(POT_HEAL_WOUNDS, 40);
+        break;
+
+    case ABIL_LEARN_SHAPE:
+        fail_check();
+        if (!kiku_take_corpse())
+        {
+            mpr("There are no corpses to learn from!");
+            return SPRET_ABORT;
+        }
+        mpr("You would have learned a new shape.");
+        break;
+
     case ABIL_HEAL_WOUNDS:
         fail_check();
         if (one_chance_in(4))
@@ -3312,6 +3332,12 @@ vector<talent> your_talents(bool check_confused, bool include_unusable)
         _add_talent(talents, ABIL_DIG, check_confused);
         if (!crawl_state.game_is_sprint() || brdepth[you.where_are_you] > 1)
             _add_talent(talents, ABIL_SHAFT_SELF, check_confused);
+    }
+
+    if (you.species == SP_SHIFTER)
+    {
+        _add_talent(talents, ABIL_LEARN_SHAPE, check_confused);
+        _add_talent(talents, ABIL_CHANGE_SHAPE, check_confused);
     }
 
     if (you.get_mutation_level(MUT_HOP))

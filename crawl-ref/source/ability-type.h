@@ -50,6 +50,9 @@ enum ability_type
     // Formicids
     ABIL_DIG,
     ABIL_SHAFT_SELF,
+    // Shapeshifters
+    ABIL_LEARN_SHAPE,
+    ABIL_CHANGE_SHAPE,
     // Barachim
     ABIL_HOP,
     ABIL_MAX_INTRINSIC = ABIL_HOP,
