@@ -518,6 +518,9 @@ static int _spell_enhancement(spell_type spell)
     if (typeflags & SPTYP_AIR)
         enhanced += player_spec_air();
 
+    if (typeflags & SPTYP_TRANSMUTATION)
+        enhanced += player_spec_trans();
+
     if (you.form == transformation::shadow)
         enhanced -= 2;
 

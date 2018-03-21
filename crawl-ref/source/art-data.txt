@@ -1306,6 +1306,15 @@ BRAND:    SPWPN_FLAMING
 FIRE:     -1
 COLD:     -1
 
+ENUM:     VEIL
+NAME:     Veil of the Dead Shifter God
+OBJ:      OBJ_ARMOUR/ARM_CLOAK
+PLUS:     +2
+COLOUR:   ETC_DARK
+TILE:     urand_shifter
+TILE_EQ:  black
+BOOL:     trans
+
 # This entry must always be last.
 ENUM:   DUMMY2
 NAME:   DUMMY UNRANDART 2

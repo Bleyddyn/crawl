@@ -1143,7 +1143,9 @@ _init_equipment_removal(transformation form)
                       || (i != EQ_RING_AMULET
                           && !get_form(form)->can_wear_item(*pitem))))
         {
-            result.insert(eq);
+            // The shapeshifter cloak doesn't meld into any form
+            if (!is_unrandom_artefact(*pitem, UNRAND_VEIL))
+                result.insert(eq);
         }
     }
     return result;
