@@ -1144,7 +1144,9 @@ _init_equipment_removal(transformation form)
                           && !get_form(form)->can_wear_item(*pitem))))
         {
             // The shapeshifter cloak doesn't meld into any form
-            if (!is_unrandom_artefact(*pitem, UNRAND_VEIL))
+            if (is_unrandom_artefact(*pitem, UNRAND_VEIL))
+                mprf("%s shifts and flows, adjusting to your new shape.", pitem->name(DESC_YOUR).c_str() );
+            else
                 result.insert(eq);
         }
     }
