@@ -155,6 +155,9 @@ bool Form::can_wear_item(const item_def& item) const
     if (is_unrandom_artefact(item, UNRAND_LEAR))
         return !(blocked_slots & EQF_LEAR); // ok if no body slots blocked
 
+//    if( get_armour_ego_type(item) == SPARM_UNARMED )
+//        return true;
+
     return slot_available(get_armour_slot(item));
 }
 
@@ -1143,7 +1146,10 @@ _init_equipment_removal(transformation form)
                       || (i != EQ_RING_AMULET
                           && !get_form(form)->can_wear_item(*pitem))))
         {
-            result.insert(eq);
+            if( get_armour_ego_type(*pitem) == SPARM_UNARMED )
+                mprf("%s shift and flex along with your transformation.", pitem->name(DESC_YOUR).c_str() );
+            else
+                result.insert(eq);
         }
     }
     return result;
