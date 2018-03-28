@@ -1592,7 +1592,7 @@ static const species_skill_aptitude species_skill_aptitudes[] =
     APT(SP_SHIFTER,           SK_SUMMONINGS,     -2),
     APT(SP_SHIFTER,           SK_NECROMANCY,     -2),
     APT(SP_SHIFTER,           SK_TRANSLOCATIONS, -2),
-    APT(SP_SHIFTER,           SK_TRANSMUTATIONS,  0),
+    APT(SP_SHIFTER,           SK_TRANSMUTATIONS,  3),
     APT(SP_SHIFTER,           SK_FIRE_MAGIC,     -2),
     APT(SP_SHIFTER,           SK_ICE_MAGIC,      -2),
     APT(SP_SHIFTER,           SK_AIR_MAGIC,      -2),

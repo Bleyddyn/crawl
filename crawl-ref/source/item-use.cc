@@ -701,6 +701,16 @@ bool can_wear_armour(const item_def &item, bool verbose, bool ignore_temporary)
         return false;
     }
 
+    if (you.species == SP_SHIFTER && (slot == EQ_HELMET || slot == EQ_BOOTS) )
+    {
+        if (!ignore_temporary && !get_form()->can_wear_item(item))
+        {
+            if (verbose)
+                mpr("You can't wear that!");
+            return false;
+        }
+    }
+
     if (species_is_draconian(you.species) && slot == EQ_BODY_ARMOUR)
     {
         if (verbose)

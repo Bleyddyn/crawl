@@ -28,31 +28,20 @@
 #include "stepdown.h"
 #include "stringutil.h"
 
-bool kiku_take_corpse()
+static int _corpse_level(const item_def &item)
 {
-    for (int i = you.visible_igrd(you.pos()); i != NON_ITEM; i = mitm[i].link)
-    {
-        item_def &item(mitm[i]);
-
-        if (item.base_type != OBJ_CORPSES || item.sub_type != CORPSE_BODY)
-            continue;
-        item_was_destroyed(item);
-        destroy_item(i);
-        return true;
-    }
-
-    return false;
+    return item.freshness;
 }
 
-void butchery(item_def* specific_corpse)
+bool learn_shape(item_def* specific_corpse)
 {
-    if( you.species == SP_SHIFTER )
-        return;
+    if( you.species != SP_SHIFTER )
+        return false;
 
     if (you.visible_igrd(you.pos()) == NON_ITEM)
     {
         mpr("There isn't anything here!");
-        return;
+        return false;
     }
 
     vector<item_def *> all_corpses;
@@ -67,35 +56,16 @@ void butchery(item_def* specific_corpse)
     if (all_corpses.empty())
     {
         mprf("There are no corpses here to learn from.");
-        return;
+        return false;
     }
 
     typedef pair<item_def *, int> corpse_quality;
     vector<corpse_quality> corpse_qualities;
 
-    for (item_def *c : edible_corpses)
-        if (!is_forbidden_food(*c))
-            corpse_qualities.emplace_back(c, _corpse_quality(*c));
+    for (item_def *c : all_corpses)
+        corpse_qualities.emplace_back(c, _corpse_level(*c));
 
-    if (corpse_qualities.empty())
-    {
-        if (edible_corpses.size() == 1)
-        {
-            mprf("It would be a sin to %s the %s!", butcher_verb,
-                                edible_corpses[0]->name(DESC_THE).c_str());
-        }
-        else
-        {
-            mprf("It would be a sin to %s any of the %scorpses here!",
-                butcher_verb,
-                (seen_inedible ? (bottle_blood ? "bloody " : "edible ") : ""));
-        }
-        return;
-    }
-
-    stable_sort(begin(corpse_qualities), end(corpse_qualities),
-                                            greater_second<corpse_quality>());
-
+    stable_sort(begin(corpse_qualities), end(corpse_qualities), greater_second<corpse_quality>());
 
     // Butcher pre-chosen corpse, if found, or if there is only one corpse.
     if (specific_corpse
@@ -103,12 +73,52 @@ void butchery(item_def* specific_corpse)
                                 && Options.confirm_butcher != CONFIRM_ALWAYS
         || Options.confirm_butcher == CONFIRM_NEVER)
     {
+        if( !specific_corpse )
+            specific_corpse = corpse_qualities[0].first;
         mprf("Started learning");
-        return;
+        mprf("mtype: %d", specific_corpse->orig_monnum );
+        mprf("mon_type: %d", specific_corpse->mon_type );
+        return true;
     }
 
+/* From: mon-death.cc
+    monster_type mtype = mons.type;
+    monster_type corpse_class = mons_species(mtype);
+
+    ASSERT(!invalid_monster_type(mtype));
+    ASSERT(!invalid_monster_type(corpse_class));
+
+    if (mons_genus(mtype) == MONS_DRACONIAN
+        || mons_genus(mtype) == MONS_DEMONSPAWN)
+    {
+        if (mons.type == MONS_TIAMAT)
+            corpse_class = MONS_DRACONIAN;
+        else
+            corpse_class = draco_or_demonspawn_subspecies(mons);
+    }
+
+    if (mons.props.exists(ORIGINAL_TYPE_KEY))
+    {
+        // Shapeshifters too.
+        mtype = (monster_type) mons.props[ORIGINAL_TYPE_KEY].get_int();
+        corpse_class = mons_species(mtype);
+    }
+
+    if (!mons_class_can_leave_corpse(corpse_class))
+        return false;
+
+    corpse.base_type      = OBJ_CORPSES;
+    corpse.mon_type       = corpse_class;
+    corpse.sub_type       = CORPSE_BODY;
+    corpse.freshness      = FRESHEST_CORPSE;  // rot time
+    corpse.quantity       = 1;
+    corpse.rnd            = 1 + random2(255);
+    corpse.orig_monnum    = mtype;
+*/
     // Now pick what you want to butcher. This is only a problem
     // if there are several corpses on the square.
+    return false;
+/*
     bool butchered_any = false;
 #ifdef TOUCH_UI
     vector<const item_def*> meat;
@@ -202,4 +212,5 @@ void butchery(item_def* specific_corpse)
         handle_delay();
 
     return;
+    */
 }

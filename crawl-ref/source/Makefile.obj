@@ -197,6 +197,7 @@ ranged-attack.o \
 ray.o \
 rot.o \
 religion.o \
+shifter.o \
 shopping.o \
 shout.o \
 show.o \

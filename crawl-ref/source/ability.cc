@@ -82,6 +82,7 @@
 #include "uncancel.h"
 #include "unicode.h"
 #include "view.h"
+#include "shifter.h"
 
 #ifdef USE_TILE
 # include "tiledef-icons.h"
@@ -1810,7 +1811,7 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
 
     case ABIL_LEARN_SHAPE:
         fail_check();
-        if (!kiku_take_corpse())
+        if (!learn_shape())
         {
             mpr("There are no corpses to learn from!");
             return SPRET_ABORT;
