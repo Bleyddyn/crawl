@@ -242,6 +242,16 @@ static const form_entry formdata[] =
     SPWPN_NORMAL, GREEN, "", { "nip at", "bite", "gouge", "chomp" },
     FC_DEFAULT, FC_ENABLE, FC_ENABLE, true, false,
     "roar", 4, "foreclaw", "", "bow your heads before", "flesh"
+},
+{
+    transformation::shifter, MONS_SHAPESHIFTER, "Shapeshifter", "larval shifter", "shifter",
+    "",
+    EQF_PHYSICAL, MR_NO_FLAGS,
+    FormDuration(100, PS_NONE, 1000), 0, 0, SIZE_CHARACTER, 10,
+    6, 5, 0, true, 0, 10, 10,
+    SPWPN_NORMAL, RED, "Claws and fangs", { "hit", "claw", "bite", "maul" },
+    FC_DEFAULT, FC_ENABLE, FC_ENABLE, true, false,
+    "", 0, "claw", "", "", "flesh"
 }
 };
 COMPILE_CHECK(ARRAYSZ(formdata) == NUM_TRANSFORMS);

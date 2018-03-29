@@ -28,19 +28,49 @@
 #include "stepdown.h"
 #include "stringutil.h"
 
+#include "mon-util.h"
+#include "monster-type.h"
+
 static int _corpse_level(const item_def &item)
 {
     return item.freshness;
 }
 
+bool has_learned_shape(monster_type mtype)
+{
+    return find(begin(you.shapes), end(you.shapes), mtype) != end(you.shapes);
+}
+
+bool has_open_shape_slots()
+{
+    return has_learned_shape(MONS_PROGRAM_BUG);
+}
+
+void list_shapes()
+{
+    bool empty = true;
+    for(monster_type mtype: you.shapes)
+    {
+        if ( MONS_PROGRAM_BUG != mtype )
+        {
+            string name = mons_type_name(mtype, DESC_PLAIN); // This gave me "Sonja" instead of "Kobold"
+            mprf("%s\n", name.c_str());
+            empty = false;
+        }
+    }
+    if(empty)
+        mprf("You haven't learned any shapes yet.");
+}
+
 bool learn_shape(item_def* specific_corpse)
 {
-    if( you.species != SP_SHIFTER )
+    if( you.species != SP_SHAPESHIFTER )
         return false;
 
     if (you.visible_igrd(you.pos()) == NON_ITEM)
     {
         mpr("There isn't anything here!");
+        list_shapes();
         return false;
     }
 
@@ -56,6 +86,14 @@ bool learn_shape(item_def* specific_corpse)
     if (all_corpses.empty())
     {
         mprf("There are no corpses here to learn from.");
+        list_shapes();
+        return false;
+    }
+
+    if (!has_open_shape_slots())
+    {
+        list_shapes();
+        mprf("You've already learned as many shapes as you can.");
         return false;
     }
 
@@ -76,8 +114,98 @@ bool learn_shape(item_def* specific_corpse)
         if( !specific_corpse )
             specific_corpse = corpse_qualities[0].first;
         mprf("Started learning");
-        mprf("mtype: %d", specific_corpse->orig_monnum );
-        mprf("mon_type: %d", specific_corpse->mon_type );
+        //mprf("mtype: %d", specific_corpse->orig_monnum );
+        //mprf("mon_type: %d", specific_corpse->mon_type );
+        monster_type mtype = static_cast<monster_type>(specific_corpse->orig_monnum);
+        monsterentry *mon = get_monster_data( mtype );
+        mtype = mon->genus;
+        string name = mons_type_name(mtype, DESC_PLAIN); // This gave me "Sonja" instead of "Kobold"
+
+        if (has_learned_shape(mtype))
+        {
+            mprf("You've already learned the %s shape.", name.c_str());
+            list_shapes();
+            return false;
+        }
+
+        mprf("%s HD/AC/EV: %d/%d/%d", name.c_str(), mon->HD, mon->AC, mon->ev );
+        resists_t res = get_mons_class_resists(mtype);
+        if( MR_NO_FLAGS != res )
+        {
+            string restr = "";
+            if( res & MR_RES_POISON ) restr += "Poison, ";
+            if( res & MR_RES_ACID ) restr += "Acid, ";
+            if( res & MR_RES_COLD ) restr += "Cold, ";
+            if( res & MR_RES_FIRE ) restr += "Fire, ";
+            if( res & MR_RES_ELEC ) restr += "Electricity, ";
+            if( res & MR_RES_ROTTING ) restr += "Rotting, ";
+            mprf("Resists: %s", restr.c_str() );
+        }
+        item_was_destroyed(*specific_corpse);
+        destroy_item(specific_corpse->index());
+        //int c = max_corpse_chunks(mtype);
+        lessen_hunger(125, true, -1);
+        for (size_t i = 0; i < you.shapes.size(); ++i)
+        {
+            if (you.shapes[i] == MONS_PROGRAM_BUG)
+            {
+                you.shapes[i] = mtype;
+                break;
+            }
+        }
+/*
+        mon-data.h:    MR_RES_POISON | MR_RES_ACID,
+        mon-data.h:    MR_RES_POISON | mrd(MR_RES_ACID, 3),
+        mon-data.h:    MR_RES_COLD | mrd(MR_RES_ACID, 3),
+        mon-data.h:        | MR_RES_ACID, 3) | MR_RES_STICKY_FLAME,
+        mon-data.h:    mrd(MR_RES_COLD | MR_RES_ELEC | MR_RES_ACID | MR_RES_FIRE, 3)
+        mon-data.h:        | MR_RES_ROTTING | MR_RES_ACID, 4) | MR_RES_STICKY_FLAME,
+
+struct monsterentry
+{
+    short mc;            // monster number
+
+    char basechar;
+    colour_t colour;
+    const char *name;
+
+    monclass_flags_t bitfields;
+    resists_t resists;
+
+    // Multiplier for calculated monster XP value; see exper_value() for use.
+    int8_t exp_mod;
+
+    monster_type genus,         // "team" the monster plays for
+                 species;       // corpse type of the monster
+
+    mon_holy_type holiness;
+
+    short resist_magic;  // (positive sets value, negative is relative to hd)
+
+    // max damage in a turn is total of these four?
+    mon_attack_def attack[MAX_NUM_ATTACKS];
+
+    /// Similar to player level; used for misc purposes.
+    int HD;
+    /// Average hp; multiplied by 10 for precision.
+    int avg_hp_10x;
+
+    int8_t AC; // armour class
+    int8_t ev; // evasion
+    int sec;   // actually mon_spellbook_type
+    corpse_effect_type corpse_thingy;
+    shout_type         shouts;
+    mon_intel_type     intel;
+    habitat_type     habitat;
+    int8_t           speed;        // How quickly speed_increment increases
+    mon_energy_usage energy_usage; // And how quickly it decreases
+    mon_itemuse_type gmon_use;
+    size_type size;
+    mon_body_shape shape;
+    mon_type_tile_info tile;
+    tileidx_t corpse_tile; // XXX: ideally this would be autogenerated...
+};
+*/
         return true;
     }
 

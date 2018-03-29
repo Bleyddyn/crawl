@@ -1806,14 +1806,21 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
     case ABIL_CHANGE_SHAPE:
     // AMS
         fail_check();
-        potionlike_effect(POT_HEAL_WOUNDS, 40);
+        if( you.form == transformation::shifter )
+        {
+            untransform();
+        }
+        else if (!transform(100, transformation::shifter))
+        {
+            crawl_state.zero_turns_taken();
+            return SPRET_ABORT;
+        }
         break;
 
     case ABIL_LEARN_SHAPE:
         fail_check();
         if (!learn_shape())
         {
-            mpr("There are no corpses to learn from!");
             return SPRET_ABORT;
         }
         mpr("You would have learned a new shape.");
@@ -3335,7 +3342,7 @@ vector<talent> your_talents(bool check_confused, bool include_unusable)
             _add_talent(talents, ABIL_SHAFT_SELF, check_confused);
     }
 
-    if (you.species == SP_SHIFTER)
+    if (you.species == SP_SHAPESHIFTER)
     {
         _add_talent(talents, ABIL_LEARN_SHAPE, check_confused);
         _add_talent(talents, ABIL_CHANGE_SHAPE, check_confused);

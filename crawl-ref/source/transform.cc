@@ -965,6 +965,51 @@ public:
 
 };
 
+class FormShifter : public Form
+{
+private:
+    FormShifter() : Form(transformation::shifter) { }
+    DISALLOW_COPY_AND_ASSIGN(FormShifter);
+public:
+    static const FormShifter &instance() { static FormShifter inst; return inst; }
+
+    /**
+     * Get a string describing the form you're turning into.
+     */
+    string get_transform_description() const override
+    {
+        return article_a("larval shapeshifter");
+    }
+
+    /**
+     * @ description
+     */
+    string get_description(bool past_tense) const override
+    {
+        return make_stringf("You %s %s",
+                            past_tense ? "were" : "are",
+                            get_transform_description().c_str());
+    }
+
+    /**
+     * Get the name displayed in the UI for the form's unarmed-combat 'weapon'.
+     */
+    string get_uc_attack_name(string default_name) const override
+    {
+        return "claws";
+    }
+
+    /**
+     * Find the player's base unarmed damage in this form.
+     */
+    int get_base_unarmed_damage() const override
+    {
+        return 3 + (2 * 3); // claws 2 mutation
+    }
+
+    bool can_offhand_punch() const override { return true; }
+};
+
 static const Form* forms[] =
 {
     &FormNone::instance(),
@@ -989,6 +1034,7 @@ static const Form* forms[] =
     &FormFungus::instance(),
     &FormShadow::instance(),
     &FormHydra::instance(),
+    &FormShifter::instance(),
 };
 
 const Form* get_form(transformation xform)

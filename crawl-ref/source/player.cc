@@ -5079,6 +5079,7 @@ player::player()
 
     spell_library.reset();
     spells.init(SPELL_NO_SPELL);
+    shapes.init(MONS_PROGRAM_BUG); // shapeshifter shape slots
     old_vehumet_gifts.clear();
     spell_no        = 0;
     vehumet_gifts.clear();

@@ -20,7 +20,7 @@
 static const map<species_type, species_def> species_data =
 {
 
-{ SP_SHIFTER, {
+{ SP_SHAPESHIFTER, {
     "Ss",
     "Shapeshifter", nullptr, nullptr,
     SPF_NO_HAIR,

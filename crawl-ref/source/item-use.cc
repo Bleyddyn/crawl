@@ -701,7 +701,7 @@ bool can_wear_armour(const item_def &item, bool verbose, bool ignore_temporary)
         return false;
     }
 
-    if (you.species == SP_SHIFTER && (slot == EQ_HELMET || slot == EQ_BOOTS) )
+    if (you.species == SP_SHAPESHIFTER && (slot == EQ_HELMET || slot == EQ_BOOTS) )
     {
         if (!ignore_temporary && !get_form()->can_wear_item(item))
         {

@@ -198,7 +198,7 @@ static const species_type species_order[] =
     SP_VAMPIRE,
     // not humanoid at all
     SP_FELID,          SP_OCTOPODE,
-    SP_SHIFTER
+    SP_SHAPESHIFTER
 };
 COMPILE_CHECK(ARRAYSZ(species_order) <= NUM_SPECIES);
 
@@ -985,7 +985,7 @@ static species_group species_groups[] =
             SP_FELID,
             SP_BARACHI,
             SP_MUMMY,
-            SP_SHIFTER,
+            SP_SHAPESHIFTER,
         }
     },
 };
