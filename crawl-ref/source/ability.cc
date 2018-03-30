@@ -1804,19 +1804,17 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
     switch (abil.ability)
     {
     case ABIL_CHANGE_SHAPE:
-    // AMS
+    {
         fail_check();
-        if( you.form == transformation::shifter )
-        {
-            untransform();
-        }
-        else if (!transform(100, transformation::shifter))
+        // get a shape/slot from the player
+        int idx = random2(count_shapes());
+        if (!transform(100, transformation::shifter, false, false, nullptr, you.shapes[idx]))
         {
             crawl_state.zero_turns_taken();
             return SPRET_ABORT;
         }
         break;
-
+    }
     case ABIL_LEARN_SHAPE:
         fail_check();
         if (!learn_shape())

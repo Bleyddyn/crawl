@@ -46,6 +46,19 @@ bool has_open_shape_slots()
     return has_learned_shape(MONS_PROGRAM_BUG);
 }
 
+int count_shapes()
+{
+    int count = 0;
+    for(monster_type mtype: you.shapes)
+    {
+        if ( MONS_PROGRAM_BUG != mtype )
+        {
+            ++count;
+        }
+    }
+    return count;
+}
+
 void list_shapes()
 {
     bool empty = true;

@@ -148,9 +148,9 @@ public:
 
     string player_prayer_action() const;
 
+    virtual string get_short_name() const { return short_name; }
+
 public:
-    /// Status light ("Foo"); "" for none
-    const string short_name;
     /// "foo"; used for wizmode transformation dialogue
     const string wiz_name;
 
@@ -219,6 +219,9 @@ protected:
     /// See Form::get_base_unarmed_damage().
     const int base_unarmed_damage;
 
+    /// Status light ("Foo"); "" for none
+    string short_name;
+
 private:
     bool all_blocked(int slotflags) const;
 
@@ -279,10 +282,13 @@ bool feat_dangerous_for_form(transformation which_trans,
 
 bool check_form_stat_safety(transformation new_form, bool quiet = false);
 
+// stype is for Shapeshifter form
 bool transform(int pow, transformation which_trans,
                bool involuntary = false, bool just_check = false,
-               string *fail_reason = nullptr);
+               string *fail_reason = nullptr,
+               monster_type stype = MONS_SHAPESHIFTER );
 
+               
 // skip_move: don't make player re-enter current cell
 void untransform(bool skip_move = false);
 

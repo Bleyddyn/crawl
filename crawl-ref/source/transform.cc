@@ -87,7 +87,7 @@ static const form_entry &_find_form_entry(transformation form)
 }
 
 Form::Form(const form_entry &fe)
-    : short_name(fe.short_name), wiz_name(fe.wiz_name),
+    : wiz_name(fe.wiz_name),
       duration(fe.duration),
       str_mod(fe.str_mod), dex_mod(fe.dex_mod),
       blocked_slots(fe.blocked_slots), size(fe.size), hp_mod(fe.hp_mod),
@@ -103,6 +103,7 @@ Form::Form(const form_entry &fe)
       long_name(fe.long_name), description(fe.description),
       resists(fe.resists),
       base_unarmed_damage(fe.base_unarmed_damage),
+      short_name(fe.short_name),
       can_fly(fe.can_fly), can_swim(fe.can_swim),
       flat_ac(fe.flat_ac), power_ac(fe.power_ac), xl_ac(fe.xl_ac),
       uc_brand(fe.uc_brand), uc_attack(fe.uc_attack),
@@ -968,17 +969,44 @@ public:
 class FormShifter : public Form
 {
 private:
-    FormShifter() : Form(transformation::shifter) { }
+    FormShifter() : Form(transformation::shifter), genus(MONS_SHAPESHIFTER) { }
     DISALLOW_COPY_AND_ASSIGN(FormShifter);
+
+    monster_type genus;
 public:
-    static const FormShifter &instance() { static FormShifter inst; return inst; }
+    static FormShifter &instance() { static FormShifter inst; return inst; }
+
+
+    void set_genus( monster_type stype )
+    {
+        genus = stype;
+        string name = mons_type_name(genus, DESC_PLAIN);
+        short_name = uppercase_first(name);
+    }
+
+    virtual string get_long_name() const override
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return long_name;
+        string name = mons_type_name(genus, DESC_PLAIN);
+        return make_stringf("%s shape", name.c_str() );
+    }
+
+    monster_type get_equivalent_mons() const override
+    {
+        return genus;
+    }
 
     /**
      * Get a string describing the form you're turning into.
      */
     string get_transform_description() const override
     {
-        return article_a("larval shapeshifter");
+        if( MONS_SHAPESHIFTER == genus)
+            return article_a("larval shapeshifter");
+
+        string name = mons_type_name(genus, DESC_PLAIN);
+        return article_a(name.c_str());
     }
 
     /**
@@ -1634,7 +1662,7 @@ undead_form_reason lifeless_prevents_form(transformation which_trans,
  *                          to intervene. (That may be the only case.)
  */
 bool transform(int pow, transformation which_trans, bool involuntary,
-               bool just_check, string *fail_reason)
+               bool just_check, string *fail_reason, monster_type stype)
 {
     const transformation previous_trans = you.form;
     const bool was_flying = you.airborne();
@@ -1767,6 +1795,13 @@ bool transform(int pow, transformation which_trans, bool involuntary,
         return true;
 
     // All checks done, transformation will take place now.
+    if( transformation::shifter == which_trans )
+    {
+        if( MONS_PROGRAM_BUG == stype )
+            stype = MONS_SHAPESHIFTER;
+        FormShifter::instance().set_genus(stype);
+    }
+
     you.redraw_quiver       = true;
     you.redraw_evasion      = true;
     you.redraw_armour_class = true;
