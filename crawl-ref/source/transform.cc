@@ -973,6 +973,8 @@ private:
     DISALLOW_COPY_AND_ASSIGN(FormShifter);
 
     monster_type genus;
+    monsterentry *mon_entry;
+
 public:
     static FormShifter &instance() { static FormShifter inst; return inst; }
 
@@ -980,6 +982,7 @@ public:
     void set_genus( monster_type stype )
     {
         genus = stype;
+        mon_entry = get_monster_data(genus);
         string name = mons_type_name(genus, DESC_PLAIN);
         short_name = uppercase_first(name);
     }
@@ -1019,20 +1022,91 @@ public:
                             get_transform_description().c_str());
     }
 
+    virtual int get_ac_bonus() const
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return 0;
+
+        int flat_ac = mon_entry->AC;
+        int xl_ac = 10;
+        mprf("ac bonus: %d %d.", flat_ac, xl_ac);
+        return flat_ac * 100
+               + xl_ac * you.experience_level;
+    }
+
     /**
      * Get the name displayed in the UI for the form's unarmed-combat 'weapon'.
      */
     string get_uc_attack_name(string default_name) const override
     {
-        return "claws";
+        if( MONS_SHAPESHIFTER == genus)
+            return "claws";
+
+        string uc("claws");
+        for( int i = 0; i < MAX_NUM_ATTACKS; ++i )
+            switch(mon_entry->attack[i].type)
+            {
+                case AT_HIT: uc = "hands"; break;
+                case AT_BITE: uc = "fangs"; break;
+                case AT_STING: uc = "sting"; break;
+                case AT_TOUCH: uc = "hands"; break;
+                case AT_CLAW: uc = "claws"; break;
+                case AT_PECK: uc = "beak"; break;
+                case AT_HEADBUTT: uc = "horns"; break;
+                case AT_PUNCH: uc = "fist"; break;
+                case AT_KICK: uc = "talons"; break;
+                case AT_TENTACLE_SLAP: uc = "tentacle"; break;
+                case AT_TAIL_SLAP: uc = "tail"; break;
+                case AT_TRUNK_SLAP: uc = "trunk"; break;
+                default:
+                    break;
+            }
+        return uc;
     }
 
     /**
      * Find the player's base unarmed damage in this form.
      */
-    int get_base_unarmed_damage() const override
+    virtual int get_base_unarmed_damage() const override
     {
-        return 3 + (2 * 3); // claws 2 mutation
+        if( MONS_SHAPESHIFTER == genus)
+            return 3 + (2 * 3); // claws 2 mutation
+
+        // loop through the attacks and see which is appropriate?
+        //mon_attack_def attack[MAX_NUM_ATTACKS];
+        int uc = 0;
+        for( int i = 0; i < MAX_NUM_ATTACKS; ++i )
+        {
+            /*
+struct mon_attack_def
+{
+    attack_type     type;
+    attack_flavour  flavour;
+    int             damage;
+};
+*/
+            switch(mon_entry->attack[i].type)
+            {
+                case AT_HIT:
+                case AT_BITE:
+                case AT_STING:
+                case AT_TOUCH:
+                case AT_CLAW:
+                case AT_PECK:
+                case AT_HEADBUTT:
+                case AT_PUNCH:
+                case AT_KICK:
+                case AT_TENTACLE_SLAP:
+                case AT_TAIL_SLAP:
+                case AT_TRUNK_SLAP:
+                    uc += mon_entry->attack[i].damage;
+                    break;
+                default:
+                    break;
+            }
+        }
+        mprf("Unarmed base: %d.", uc);
+        return uc;
     }
 
     bool can_offhand_punch() const override { return true; }
@@ -1681,7 +1755,8 @@ bool transform(int pow, transformation which_trans, bool involuntary,
     if (!involuntary && crawl_state.is_god_acting())
         involuntary = true;
 
-    if (you.transform_uncancellable)
+    // shifter form is 'uncancellable' in the normal transform sense, but they can always change to a different shape
+    if (you.transform_uncancellable && !(transformation::shifter == you.form))
     {
         msg = "You are stuck in your current form!";
         success = false;
@@ -1700,7 +1775,7 @@ bool transform(int pow, transformation which_trans, bool involuntary,
     }
 
     // This must occur before the untransform() and the undead_state() check.
-    if (previous_trans == which_trans)
+    if ( (previous_trans == which_trans) && (transformation::shifter != which_trans) )
     {
         if (just_check)
             return true;
@@ -1800,6 +1875,7 @@ bool transform(int pow, transformation which_trans, bool involuntary,
         if( MONS_PROGRAM_BUG == stype )
             stype = MONS_SHAPESHIFTER;
         FormShifter::instance().set_genus(stype);
+        you.transform_uncancellable = true;
     }
 
     you.redraw_quiver       = true;

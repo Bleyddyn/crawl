@@ -1652,6 +1652,11 @@ static void tag_construct_you(writer &th)
 
     CANARY;
 
+    // how many shapes?
+    marshallUByte(th, 10);
+    for (int i = 0; i < 10; ++i)
+        marshallShort(th, you.shapes[i]);
+
     // Write a human-readable string out on the off chance that
     // we fail to be able to read this file back in using some later version.
     string revision = "Git:";
@@ -3631,6 +3636,14 @@ static void tag_read_you(reader &th)
     }
 
     EAT_CANARY;
+
+    // how many shapes?
+    count = unmarshallUByte(th);
+    ASSERT(count >= 0);
+    for (int i = 0; i < 10; ++i)
+    {
+        you.shapes[i] = static_cast<monster_type>(unmarshallShort(th));
+    }
 
     crawl_state.save_rcs_version = unmarshallString(th);
 

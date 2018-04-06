@@ -1808,8 +1808,9 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
         fail_check();
         // get a shape/slot from the player
         int idx = random2(count_shapes());
-        if (!transform(100, transformation::shifter, false, false, nullptr, you.shapes[idx]))
+        if (!transform(100, transformation::shifter, true, false, nullptr, you.shapes[idx]))
         {
+            you.transform_uncancellable = true;
             crawl_state.zero_turns_taken();
             return SPRET_ABORT;
         }
@@ -3391,7 +3392,9 @@ vector<talent> your_talents(bool check_confused, bool include_unusable)
         _add_talent(talents, ABIL_DAMNATION, check_confused);
 
     if (you.duration[DUR_TRANSFORMATION] && !you.transform_uncancellable)
+    {
         _add_talent(talents, ABIL_END_TRANSFORMATION, check_confused);
+    }
 
     if (you.get_mutation_level(MUT_BLINK))
         _add_talent(talents, ABIL_BLINK, check_confused);
