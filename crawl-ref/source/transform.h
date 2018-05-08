@@ -75,7 +75,7 @@ private:
 protected:
     Form(transformation tran);
 public:
-    bool slot_available(int slot) const;
+    virtual bool slot_available(int slot) const;
     bool can_wield() const { return slot_available(EQ_WEAPON); }
     virtual bool can_wear_item(const item_def& item) const;
 
@@ -139,7 +139,7 @@ public:
     virtual string get_uc_attack_name(string default_name) const;
     virtual int get_ac_bonus() const;
 
-    bool enables_flight() const;
+    virtual bool enables_flight() const;
     bool forbids_flight() const;
     bool forbids_swimming() const;
 

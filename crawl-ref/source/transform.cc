@@ -1029,7 +1029,6 @@ public:
 
         int flat_ac = mon_entry->AC;
         int xl_ac = 10;
-        mprf("ac bonus: %d %d.", flat_ac, xl_ac);
         return flat_ac * 100
                + xl_ac * you.experience_level;
     }
@@ -1110,6 +1109,23 @@ struct mon_attack_def
     }
 
     bool can_offhand_punch() const override { return true; }
+
+    bool enables_flight() const override
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return false;
+        return mons_class_flag(genus, M_FLIES);
+    }
+
+    virtual bool slot_available(int slot) const
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return Form::slot_available(slot);
+        mon_itemuse_type use = mons_class_itemuse(genus);
+        if( (MONUSE_STARTING_EQUIPMENT == use) || (MONUSE_WEAPONS_ARMOUR == use) )
+            return true;
+        return false;
+    }
 };
 
 static const Form* forms[] =
@@ -1825,6 +1841,15 @@ bool transform(int pow, transformation which_trans, bool involuntary,
     if (!just_check && previous_trans != transformation::none)
         untransform(true);
 
+    // All checks done, transformation will take place now.
+    if( transformation::shifter == which_trans )
+    {
+        if( MONS_PROGRAM_BUG == stype )
+            stype = MONS_SHAPESHIFTER;
+        FormShifter::instance().set_genus(stype);
+        you.transform_uncancellable = true;
+    }
+
     set<equipment_type> rem_stuff = _init_equipment_removal(which_trans);
 
     // if going into lichform causes us to drop a holy weapon with consequences
@@ -1868,15 +1893,6 @@ bool transform(int pow, transformation which_trans, bool involuntary,
     // If we're just pretending return now.
     if (just_check)
         return true;
-
-    // All checks done, transformation will take place now.
-    if( transformation::shifter == which_trans )
-    {
-        if( MONS_PROGRAM_BUG == stype )
-            stype = MONS_SHAPESHIFTER;
-        FormShifter::instance().set_genus(stype);
-        you.transform_uncancellable = true;
-    }
 
     you.redraw_quiver       = true;
     you.redraw_evasion      = true;

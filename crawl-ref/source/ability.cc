@@ -1822,7 +1822,6 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
         {
             return SPRET_ABORT;
         }
-        mpr("You would have learned a new shape.");
         break;
 
     case ABIL_HEAL_WOUNDS:
