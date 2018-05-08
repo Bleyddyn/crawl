@@ -1004,12 +1004,7 @@ static monster* _place_monster_aux(const mgen_data &mg, const monster *leader,
             for (auto facet : mg.props[MUTANT_BEAST_FACETS].get_vector())
                 gen_facets.push_back(facet.get_int());
 
-        set<int> avoid_facets;
-        if (mg.props.exists(MUTANT_BEAST_AVOID_FACETS))
-            for (auto facet : mg.props[MUTANT_BEAST_AVOID_FACETS].get_vector())
-                avoid_facets.insert(facet.get_int());
-
-        init_mutant_beast(*mon, mg.hd, gen_facets, avoid_facets);
+        init_mutant_beast(*mon, mg.hd, gen_facets);
     }
 
     // Is it a god gift?
@@ -2835,9 +2830,6 @@ conduct_type player_will_anger_monster(const monster &mon)
     if (god_hates_spellcasting(you.religion) && mon.is_actual_spellcaster())
         return DID_SPELL_CASTING;
 
-    if (you_worship(GOD_DITHMENOS) && mons_is_fiery(mon))
-        return DID_FIRE;
-
     return DID_NOTHING;
 }
 
@@ -2874,9 +2866,6 @@ bool player_angers_monster(monster* mon)
                 break;
             case DID_SPELL_CASTING:
                 mprf("%s is enraged by your magic-hating god!", mname.c_str());
-                break;
-            case DID_FIRE:
-                mprf("%s is enraged by your darkness!", mname.c_str());
                 break;
             case DID_SACRIFICE_LOVE:
                 mprf("%s can only feel hate for you!", mname.c_str());

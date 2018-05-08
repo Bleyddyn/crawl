@@ -1271,11 +1271,6 @@ bool form_can_bleed(transformation form)
     return get_form(form)->can_bleed != FC_FORBID;
 }
 
-bool form_can_use_wand(transformation form)
-{
-    return form_can_wield(form) || form == transformation::dragon;
-}
-
 // Used to mark forms which keep most form-based mutations.
 bool form_keeps_mutations(transformation form)
 {
