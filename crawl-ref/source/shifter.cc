@@ -131,7 +131,8 @@ bool learn_shape(item_def* specific_corpse)
         //mprf("mon_type: %d", specific_corpse->mon_type );
         monster_type mtype = static_cast<monster_type>(specific_corpse->orig_monnum);
         monsterentry *mon = get_monster_data( mtype );
-        mtype = mon->genus;
+        mtype = mon->genus; // Gives: Snake
+        mtype = mon->species; // Gives: Adder
         string name = mons_type_name(mtype, DESC_PLAIN); // This gave me "Sonja" instead of "Kobold"
 
         if (has_learned_shape(mtype))

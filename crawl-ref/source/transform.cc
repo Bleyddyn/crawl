@@ -1063,6 +1063,32 @@ public:
         return uc;
     }
 
+    brand_type get_uc_brand() const
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return Form::get_uc_brand();
+
+        brand_type res = SPWPN_NORMAL;
+
+        for( int i = 0; i < MAX_NUM_ATTACKS; ++i )
+        {
+            switch(mon_entry->attack[i].flavour)
+            {
+                case AF_POISON_PARALYSE:
+                case AF_POISON:
+                case AF_POISON_STRONG:
+                    res = SPWPN_VENOM;
+                    break;
+
+                default:
+                    break;
+            }
+        }
+        //if( SPWPN_NORMAL != res )
+        //    mprf( "UC Attack brand: %d.", res );
+        return res;
+   }
+
     /**
      * Find the player's base unarmed damage in this form.
      */
