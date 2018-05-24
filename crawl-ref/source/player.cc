@@ -1917,6 +1917,8 @@ int player_movement_speed()
     else if (you.fishtail || you.form == transformation::hydra && you.in_water())
         mv = 6;
 
+    mv = get_form()->get_movement_speed(); // defaults to 10
+
     // Wading through water is very slow.
     if (you.in_water() && !you.can_swim())
         mv += 6;

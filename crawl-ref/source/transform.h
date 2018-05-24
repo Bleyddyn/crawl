@@ -79,7 +79,8 @@ public:
     bool can_wield() const { return slot_available(EQ_WEAPON); }
     virtual bool can_wear_item(const item_def& item) const;
 
-    int get_duration(int pow) const;
+    virtual int get_duration(int pow) const;
+    virtual bool can_expire() const;
 
     /**
      * What monster corresponds to this form?
@@ -138,6 +139,8 @@ public:
     virtual bool can_offhand_punch() const { return can_wield(); }
     virtual string get_uc_attack_name(string default_name) const;
     virtual int get_ac_bonus() const;
+    virtual int get_dex_bonus() const;
+    virtual size_type get_size() const { return size; }
 
     virtual bool enables_flight() const;
     bool forbids_flight() const;
@@ -145,6 +148,7 @@ public:
 
     bool player_can_fly() const;
     bool player_can_swim() const;
+    virtual int get_movement_speed() const { return 10; }
 
     string player_prayer_action() const;
 
@@ -159,16 +163,12 @@ public:
 
     /// flat str bonus
     const int str_mod;
-    /// flat dex bonus
-    const int dex_mod;
 
     /// Equipment types unusable in this form.
     /** A bitfield representing a union of (1 << equipment_type) values for
      * equipment types that are unusable in this form.
      */
     const int blocked_slots;
-    /// size of the form
-    const size_type size;
     /// 10 * multiplier to hp/mhp (that is, 10 is base, 15 is 1.5x, etc)
     const int hp_mod;
 
@@ -221,6 +221,11 @@ protected:
 
     /// Status light ("Foo"); "" for none
     string short_name;
+
+    /// flat dex bonus
+    const int dex_mod;
+    /// size of the form
+    const size_type size;
 
 private:
     bool all_blocked(int slotflags) const;

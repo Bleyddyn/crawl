@@ -466,7 +466,7 @@ static int _dex_modifier(bool innate_only)
         result += you.scan_artefacts(ARTP_DEXTERITY);
 
         // form
-        result += get_form()->dex_mod;
+        result += get_form()->get_dex_bonus();
     }
 
     // mutations

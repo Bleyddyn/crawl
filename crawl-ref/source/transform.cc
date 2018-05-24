@@ -89,8 +89,8 @@ static const form_entry &_find_form_entry(transformation form)
 Form::Form(const form_entry &fe)
     : wiz_name(fe.wiz_name),
       duration(fe.duration),
-      str_mod(fe.str_mod), dex_mod(fe.dex_mod),
-      blocked_slots(fe.blocked_slots), size(fe.size), hp_mod(fe.hp_mod),
+      str_mod(fe.str_mod),
+      blocked_slots(fe.blocked_slots), hp_mod(fe.hp_mod),
       can_cast(fe.can_cast), spellcasting_penalty(fe.spellcasting_penalty),
       unarmed_hit_bonus(fe.unarmed_hit_bonus), uc_colour(fe.uc_colour),
       uc_attack_verbs(fe.uc_attack_verbs),
@@ -103,7 +103,7 @@ Form::Form(const form_entry &fe)
       long_name(fe.long_name), description(fe.description),
       resists(fe.resists),
       base_unarmed_damage(fe.base_unarmed_damage),
-      short_name(fe.short_name),
+      short_name(fe.short_name), dex_mod(fe.dex_mod), size(fe.size),
       can_fly(fe.can_fly), can_swim(fe.can_swim),
       flat_ac(fe.flat_ac), power_ac(fe.power_ac), xl_ac(fe.xl_ac),
       uc_brand(fe.uc_brand), uc_attack(fe.uc_attack),
@@ -195,6 +195,19 @@ int Form::get_duration(int pow) const
 }
 
 /**
+ * Can this form expire?
+ *   Vampires in vampire bat form don't expire.
+ *   Shapeshifters in one of thier shifted forms don't expire.
+ *   All other can expire.
+ * @return      true if this form can expire
+ */
+bool Form::can_expire() const
+{
+    bool vampbat = (you.species == SP_VAMPIRE && you.form == transformation::bat);
+    return !vampbat;
+}
+
+/**
  * Get a verbose description for the form.
  *
  * @param past_tense     Whether the description should be in past or present
@@ -256,6 +269,11 @@ int Form::get_ac_bonus() const
     return flat_ac * 100
            + power_ac * you.props[TRANSFORM_POW_KEY].get_int()
            + xl_ac * you.experience_level;
+}
+
+int Form::get_dex_bonus() const
+{
+    return dex_mod;
 }
 
 /**
@@ -756,6 +774,11 @@ public:
         return make_stringf("a %sbat.",
                             you.species == SP_VAMPIRE ? "vampire " : "");
     }
+
+    virtual int get_movement_speed() const
+    {
+        return 5; // but allowed minimum is six
+    }
 };
 
 class FormPig : public Form
@@ -765,6 +788,10 @@ private:
     DISALLOW_COPY_AND_ASSIGN(FormPig);
 public:
     static const FormPig &instance() { static FormPig inst; return inst; }
+    virtual int get_movement_speed() const
+    {
+        return 7; // but allowed minimum is six
+    }
 };
 
 class FormAppendage : public Form
@@ -854,6 +881,11 @@ private:
     DISALLOW_COPY_AND_ASSIGN(FormWisp);
 public:
     static const FormWisp &instance() { static FormWisp inst; return inst; }
+
+    virtual int get_movement_speed() const
+    {
+        return 8;
+    }
 };
 
 #if TAG_MAJOR_VERSION == 34
@@ -964,6 +996,13 @@ public:
         return 2 + normal_heads_damage + too_many_heads_damage;
     }
 
+    virtual int get_movement_speed() const
+    {
+        int mv = Form::get_movement_speed();
+        if( you.in_water() )
+            mv = 6;
+        return mv;
+    }
 };
 
 class FormShifter : public Form
@@ -973,11 +1012,20 @@ private:
     DISALLOW_COPY_AND_ASSIGN(FormShifter);
 
     monster_type genus;
-    monsterentry *mon_entry;
+    monsterentry *mon_entry; // See mon-util.h
 
 public:
     static FormShifter &instance() { static FormShifter inst; return inst; }
 
+    virtual bool can_expire() const
+    {
+        return false;
+    }
+
+    virtual int get_duration(int pow) const
+    {
+        return 1000;
+    }
 
     void set_genus( monster_type stype )
     {
@@ -985,6 +1033,10 @@ public:
         mon_entry = get_monster_data(genus);
         string name = mons_type_name(genus, DESC_PLAIN);
         short_name = uppercase_first(name);
+        mprf("AC bonus: %d.", get_ac_bonus());
+        mprf("Dex bonus: %d.", get_dex_bonus());
+        mprf("Size: %d.", mon_entry->size);
+        mprf("Speed: %d/%d.", mons_class_base_speed(genus), get_movement_speed());
     }
 
     virtual string get_long_name() const override
@@ -1031,6 +1083,20 @@ public:
         int xl_ac = 10;
         return flat_ac * 100
                + xl_ac * you.experience_level;
+    }
+
+    virtual int get_dex_bonus() const
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return 0;
+
+        int flat_ev = mon_entry->ev;
+        return flat_ev;
+    }
+
+    virtual size_type get_size() const
+    {
+        return mon_entry->size;
     }
 
     /**
@@ -1130,7 +1196,7 @@ struct mon_attack_def
                     break;
             }
         }
-        mprf("Unarmed base: %d.", uc);
+        dprf("Unarmed base: %d.", uc);
         return uc;
     }
 
@@ -1141,6 +1207,18 @@ struct mon_attack_def
         if( MONS_SHAPESHIFTER == genus)
             return false;
         return mons_class_flag(genus, M_FLIES);
+    }
+
+    virtual int get_movement_speed() const
+    {
+        int mon_speed = mons_class_base_speed(genus);
+        int adj = (mon_speed - 10) / 4;
+        // normal 5
+        // bat    5
+        // pig    7
+        // wisp   8
+        // hydra  6 in water
+        return 10 - adj;
     }
 
     virtual bool slot_available(int slot) const
@@ -1643,7 +1721,7 @@ static bool _transformation_is_safe(transformation which_trans,
 bool check_form_stat_safety(transformation new_form, bool quiet)
 {
     const int str_mod = get_form(new_form)->str_mod - get_form()->str_mod;
-    const int dex_mod = get_form(new_form)->dex_mod - get_form()->dex_mod;
+    const int dex_mod = get_form(new_form)->get_dex_bonus() - get_form()->get_dex_bonus();
 
     const bool bad_str = you.strength() > 0 && str_mod + you.strength() <= 0;
     const bool bad_dex = you.dex() > 0 && dex_mod + you.dex() <= 0;
@@ -1938,7 +2016,7 @@ bool transform(int pow, transformation which_trans, bool involuntary,
     you.props[TRANSFORM_POW_KEY] = pow;
 
     const int str_mod = get_form(which_trans)->str_mod;
-    const int dex_mod = get_form(which_trans)->dex_mod;
+    const int dex_mod = get_form(which_trans)->get_dex_bonus();
 
     if (str_mod)
         notify_stat_change(STAT_STR, str_mod, true);
@@ -2150,7 +2228,7 @@ void untransform(bool skip_move)
         mprf(MSGCH_DURATION, "%s", message.c_str());
 
     const int str_mod = get_form(old_form)->str_mod;
-    const int dex_mod = get_form(old_form)->dex_mod;
+    const int dex_mod = get_form(old_form)->get_dex_bonus();
 
     if (str_mod)
         notify_stat_change(STAT_STR, -str_mod, true);
