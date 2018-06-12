@@ -670,3 +670,9 @@ A strange sword, one blade blistering hot and the other icy cold. When it hits
 its target the thermal gradient increases. What causes this effect is unknown
 but it is rumored that otherworldly forces are involved.
 %%%%
+Veil of the Dead Shifter God
+
+A lightweight, flowing veil that seems to be made of the smoothest silk. Rumor
+has it that this is the skin of a long dead shapeshifter who is now revered as
+a god.
+%%%%

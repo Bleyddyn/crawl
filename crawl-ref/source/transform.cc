@@ -1148,6 +1148,9 @@ _init_equipment_removal(transformation form)
         {
             if( get_armour_ego_type(*pitem) == SPARM_UNARMED )
                 mprf("%s shift and flex along with your transformation.", pitem->name(DESC_YOUR).c_str() );
+            // The shapeshifter cloak doesn't meld into any form
+            if (is_unrandom_artefact(*pitem, UNRAND_VEIL))
+                mprf("%s shifts and flows, adjusting to your new shape.", pitem->name(DESC_YOUR).c_str() );
             else
                 result.insert(eq);
         }

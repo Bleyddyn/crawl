@@ -1802,6 +1802,16 @@ int player_spec_poison()
     return sp;
 }
 
+int player_spec_trans()
+{
+    int st = 0;
+
+    if( player_equip_unrand(UNRAND_VEIL) )
+        st++;
+
+    return st;
+}
+
 int player_energy()
 {
     int pe = 0;
