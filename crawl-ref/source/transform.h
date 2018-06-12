@@ -140,7 +140,7 @@ public:
     virtual string get_uc_attack_name(string default_name) const;
     virtual int get_ac_bonus() const;
     virtual int get_dex_bonus() const;
-    virtual size_type get_size() const { return size; }
+    virtual size_type get_size() const;
 
     virtual bool enables_flight() const;
     bool forbids_flight() const;

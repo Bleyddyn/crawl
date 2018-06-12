@@ -271,6 +271,11 @@ int Form::get_ac_bonus() const
            + xl_ac * you.experience_level;
 }
 
+size_type Form::get_size() const
+{
+    return size;
+}
+
 int Form::get_dex_bonus() const
 {
     return dex_mod;
@@ -488,6 +493,7 @@ public:
      * as the one used to describe this form in @.
      */
     string get_transform_description() const override { return "your old self."; }
+    virtual size_type get_size() const { return SIZE_CHARACTER; }
 };
 
 class FormSpider : public Form
@@ -1074,7 +1080,7 @@ public:
                             get_transform_description().c_str());
     }
 
-    virtual int get_ac_bonus() const
+    virtual int get_ac_bonus() const override
     {
         if( MONS_SHAPESHIFTER == genus)
             return 0;
@@ -1091,11 +1097,15 @@ public:
             return 0;
 
         int flat_ev = mon_entry->ev;
+        flat_ev -= you.max_stat(STAT_DEX,true);
+        flat_ev /= 4;
         return flat_ev;
     }
 
     virtual size_type get_size() const
     {
+        if( MONS_SHAPESHIFTER == genus)
+            return SIZE_CHARACTER;
         return mon_entry->size;
     }
 
