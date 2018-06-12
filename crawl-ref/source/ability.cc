@@ -82,6 +82,7 @@
 #include "uncancel.h"
 #include "unicode.h"
 #include "view.h"
+#include "shifter.h"
 
 #ifdef USE_TILE
 # include "tiledef-icons.h"
@@ -646,6 +647,10 @@ static const ability_def Ability_List[] =
       0, 0, 0, 0, {fail_basis::invo}, abflag::none },
     { ABIL_CONVERT_TO_BEOGH, "Convert to Beogh",
       0, 0, 0, 0, {fail_basis::invo}, abflag::none },
+    { ABIL_LEARN_SHAPE, "Learn Shape",
+      0, 0, 125, 0, {fail_basis::invo}, abflag::none },
+    { ABIL_CHANGE_SHAPE, "Change Shape",
+      1, 0, 125, 0, {fail_basis::xl, 40, 5}, abflag::none },
 };
 
 static const ability_def& get_ability_def(ability_type abil)
@@ -1127,15 +1132,7 @@ string get_ability_desc(const ability_type ability)
 
 static void _print_talent_description(const talent& tal)
 {
-#ifdef USE_TILE_WEB
-    tiles_crt_control show_as_menu(CRT_MENU, "describe_ability");
-#endif
-    clrscr();
-
-    print_description(get_ability_desc(tal.which));
-
-    getchm();
-    clrscr();
+    show_description(get_ability_desc(tal.which));
 }
 
 void no_ability_msg()
@@ -1320,15 +1317,19 @@ static bool _check_ability_possible(const ability_def& abil, bool quiet = false)
         return false;
     }
 
-    if (silenced(you.pos()))
+    // Silence and water elementals
+    if (silenced(you.pos())
+        || you.duration[DUR_WATER_HOLD] && !you.res_water_drowning())
     {
         talent tal = get_talent(abil.ability, false);
         if (tal.is_invocation)
         {
             if (!quiet)
             {
-                mprf("You cannot call out to %s while silenced.",
-                     god_name(you.religion).c_str());
+                mprf("You cannot call out to %s while %s.",
+                     god_name(you.religion).c_str(),
+                     you.duration[DUR_WATER_HOLD] ? "unable to breathe"
+                                                  : "silenced");
             }
             return false;
         }
@@ -1516,7 +1517,7 @@ static bool _check_ability_possible(const ability_def& abil, bool quiet = false)
         return true;
 
     case ABIL_ASHENZARI_TRANSFER_KNOWLEDGE:
-        if (all_skills_maxed(true))
+        if (!trainable_skills(true))
         {
             if (!quiet)
                 mpr("You have nothing more to learn.");
@@ -1798,6 +1799,27 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
     // statement... it's assumed that only failures have returned! - bwr
     switch (abil.ability)
     {
+    case ABIL_CHANGE_SHAPE:
+    {
+        fail_check();
+        // get a shape/slot from the player
+        int idx = random2(count_shapes());
+        if (!transform(100, transformation::shifter, true, false, nullptr, you.shapes[idx]))
+        {
+            you.transform_uncancellable = true;
+            crawl_state.zero_turns_taken();
+            return SPRET_ABORT;
+        }
+        break;
+    }
+    case ABIL_LEARN_SHAPE:
+        fail_check();
+        if (!learn_shape())
+        {
+            return SPRET_ABORT;
+        }
+        break;
+
     case ABIL_HEAL_WOUNDS:
         fail_check();
         if (one_chance_in(4))
@@ -3314,6 +3336,12 @@ vector<talent> your_talents(bool check_confused, bool include_unusable)
             _add_talent(talents, ABIL_SHAFT_SELF, check_confused);
     }
 
+    if (you.species == SP_SHAPESHIFTER)
+    {
+        _add_talent(talents, ABIL_LEARN_SHAPE, check_confused);
+        _add_talent(talents, ABIL_CHANGE_SHAPE, check_confused);
+    }
+
     if (you.get_mutation_level(MUT_HOP))
         _add_talent(talents, ABIL_HOP, check_confused);
 
@@ -3359,7 +3387,9 @@ vector<talent> your_talents(bool check_confused, bool include_unusable)
         _add_talent(talents, ABIL_DAMNATION, check_confused);
 
     if (you.duration[DUR_TRANSFORMATION] && !you.transform_uncancellable)
+    {
         _add_talent(talents, ABIL_END_TRANSFORMATION, check_confused);
+    }
 
     if (you.get_mutation_level(MUT_BLINK))
         _add_talent(talents, ABIL_BLINK, check_confused);

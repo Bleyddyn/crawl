@@ -1649,11 +1649,6 @@ ShoppingList::ShoppingList()
         pos = level_pos::current(); \
     ASSERT(pos.is_valid());
 
-#define SETUP_THING()                             \
-    CrawlHashTable *thing = new CrawlHashTable();  \
-    (*thing)[SHOPPING_THING_COST_KEY] = cost; \
-    (*thing)[SHOPPING_THING_POS_KEY]  = pos;
-
 bool ShoppingList::add_thing(const item_def &item, int cost,
                              const level_pos* _pos)
 {
@@ -1669,40 +1664,15 @@ bool ShoppingList::add_thing(const item_def &item, int cost,
         return false;
     }
 
-    SETUP_THING();
+    CrawlHashTable *thing = new CrawlHashTable();
+    (*thing)[SHOPPING_THING_COST_KEY] = cost;
+    (*thing)[SHOPPING_THING_POS_KEY]  = pos;
     (*thing)[SHOPPING_THING_ITEM_KEY] = item;
     list->push_back(*thing);
     refresh();
 
     return true;
 }
-
-bool ShoppingList::add_thing(string desc, string buy_verb, int cost,
-                             const level_pos* _pos)
-{
-    ASSERT(!desc.empty());
-    ASSERT(!buy_verb.empty());
-    ASSERT(cost > 0);
-
-    SETUP_POS();
-
-    if (find_thing(desc, pos) != -1)
-    {
-        mprf(MSGCH_ERROR, "%s is already on the shopping list.",
-             desc.c_str());
-        return false;
-    }
-
-    SETUP_THING();
-    (*thing)[SHOPPING_THING_DESC_KEY] = desc;
-    (*thing)[SHOPPING_THING_VERB_KEY] = buy_verb;
-    list->push_back(*thing);
-    refresh();
-
-    return true;
-}
-
-#undef SETUP_THING
 
 bool ShoppingList::is_on_list(const item_def &item, const level_pos* _pos) const
 {
@@ -1996,6 +1966,40 @@ void ShoppingList::item_type_identified(object_class_type base_type,
     refresh();
 }
 
+void ShoppingList::spells_added_to_library(const vector<spell_type>& spells, bool quiet)
+{
+    if (!list) /* let's not make book starts crash instantly... */
+        return;
+
+    vector<CrawlHashTable*> to_del;
+    for (CrawlHashTable &thing : *list)
+    {
+        if (!thing_is_item(thing)) // ???
+            continue;
+        const item_def& book = get_thing_item(thing);
+        if (book.base_type != OBJ_BOOKS || book.sub_type == BOOK_MANUAL)
+            continue;
+
+        const auto item_spells = spells_in_book(book);
+        if (any_of(item_spells.begin(), item_spells.end(), [&spells](const spell_type st) {
+                    return find(spells.begin(), spells.end(), st) != spells.end();
+                }) && is_useless_item(book, false))
+        {
+            to_del.push_back(&thing);
+        }
+    }
+    for (auto thing : to_del)
+    {
+        if (!quiet)
+        {
+            mprf("Shopping list: removing %s",
+                describe_thing(*thing, DESC_A).c_str());
+        }
+        level_pos pos = thing_pos(*thing);
+        del_thing(get_thing_item(*thing), &pos);
+    }
+}
+
 void ShoppingList::remove_dead_shops()
 {
     // Only restore the excursion at the very end.
@@ -2210,9 +2214,7 @@ void ShoppingList::fill_out_menu(Menu& shopmenu)
         MenuEntry *me = new MenuEntry(etitle, MEL_ITEM, 1, hotkey);
         me->data = &thing;
 
-        if (cost > you.gold)
-            me->colour = DARKGREY;
-        else if (thing_is_item(thing))
+        if (thing_is_item(thing))
         {
             // Colour shopping list item according to menu colours.
             const item_def &item = get_thing_item(thing);
@@ -2221,9 +2223,18 @@ void ShoppingList::fill_out_menu(Menu& shopmenu)
             const int col = menu_colour(item.name(DESC_A),
                                         colprf, "shop");
 
+#ifdef USE_TILE
+            vector<tile_def> item_tiles;
+            get_tiles_for_item(item, item_tiles, true);
+            for (const auto &tile : item_tiles)
+                me->add_tile(tile);
+#endif
+
             if (col != -1)
                 me->colour = col;
         }
+        if (cost > you.gold)
+            me->colour = DARKGREY;
 
         shopmenu.add_entry(me);
         ++hotkey;
@@ -2294,9 +2305,7 @@ void ShoppingList::display()
                              "%s with an entry fee of %d gold pieces.",
                              describe_thing(*thing, DESC_A).c_str(),
                              (int) thing_cost(*thing));
-
-                print_description(info.c_str());
-                getchm();
+                show_description(info.c_str());
             }
         }
         else if (shopmenu.menu_action == Menu::ACT_MISC)

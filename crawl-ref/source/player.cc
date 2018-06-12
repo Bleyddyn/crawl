@@ -54,6 +54,7 @@
 #include "nearby-danger.h"
 #include "notes.h"
 #include "output.h"
+#include "player-equip.h"
 #include "player-save-info.h"
 #include "player-stats.h"
 #include "potion.h"
@@ -1926,6 +1927,8 @@ int player_movement_speed()
     else if (you.fishtail || you.form == transformation::hydra && you.in_water())
         mv = 6;
 
+    mv = get_form()->get_movement_speed(); // defaults to 10
+
     // Wading through water is very slow.
     if (you.in_water() && !you.can_swim())
         mv += 6;
@@ -1955,9 +1958,6 @@ int player_movement_speed()
 
     if (you.duration[DUR_GRASPING_ROOTS])
         mv += 3;
-
-    if (you.duration[DUR_ICY_ARMOUR])
-        ++mv; // as ponderous
 
     // Mutations: -2, -3, -4, unless innate and shapechanged.
     if (int fast = you.get_mutation_level(MUT_FAST))
@@ -2140,9 +2140,8 @@ static int _player_evasion_bonuses()
         evbonus -= you.get_mutation_level(MUT_SLOW_REFLEXES) * 5;
 
     // If you have an active amulet of the acrobat and just moved, get massive
-    // EV bonus. We also display this bonus if the duration isn't in effect but
-    // it was during the last move. It's a little hacky.
-    if (you.duration[DUR_ACROBAT] || you.props[LAST_ACTION_WAS_MOVE_OR_REST_KEY].get_bool())
+    // EV bonus.
+    if (acrobat_boost_visible())
         evbonus += 15;
 
     return evbonus;
@@ -4219,6 +4218,9 @@ bool poison_player(int amount, string source, string source_aux, bool force)
 {
     ASSERT(!crawl_state.game_is_arena());
 
+    if (crawl_state.disables[DIS_AFFLICTIONS])
+        return false;
+
     if (you.duration[DUR_DIVINE_STAMINA] > 0)
     {
         mpr("Your divine stamina protects you from poison!");
@@ -5093,6 +5095,7 @@ player::player()
 
     spell_library.reset();
     spells.init(SPELL_NO_SPELL);
+    shapes.init(MONS_PROGRAM_BUG); // shapeshifter shape slots
     old_vehumet_gifts.clear();
     spell_no        = 0;
     vehumet_gifts.clear();

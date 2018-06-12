@@ -276,6 +276,8 @@ int actor::spec_evoke(bool calc_unid, bool items) const
 
 bool actor::no_cast(bool calc_unid, bool items) const
 {
+//    if( is_player() && is_player_same_genus(MONS_SHAPESHIFTER) )
+//        return true;
     return items && scan_artefacts(ARTP_PREVENT_SPELLCASTING, calc_unid);
 }
 

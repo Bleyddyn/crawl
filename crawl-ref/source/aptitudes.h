@@ -1561,5 +1561,45 @@ static const species_skill_aptitude species_skill_aptitudes[] =
     APT(SP_GNOLL,           SK_POISON_MAGIC,    6),
     APT(SP_GNOLL,           SK_INVOCATIONS,     9),
     APT(SP_GNOLL,           SK_EVOCATIONS,      8),
+
+    // SP_SHAPESHIFTER
+    APT(SP_SHAPESHIFTER,           SK_FIGHTING,        1),
+    APT(SP_SHAPESHIFTER,           SK_SHORT_BLADES,   -2),
+    APT(SP_SHAPESHIFTER,           SK_LONG_BLADES,    -2),
+    APT(SP_SHAPESHIFTER,           SK_AXES,           -2),
+    APT(SP_SHAPESHIFTER,           SK_MACES_FLAILS,   -1),
+    APT(SP_SHAPESHIFTER,           SK_POLEARMS,       -2),
+    APT(SP_SHAPESHIFTER,           SK_STAVES,          0),
+    APT(SP_SHAPESHIFTER,           SK_SLINGS,         -1),
+    APT(SP_SHAPESHIFTER,           SK_BOWS,           -2),
+    APT(SP_SHAPESHIFTER,           SK_CROSSBOWS,      -2),
+    APT(SP_SHAPESHIFTER,           SK_THROWING,        0),
+    APT(SP_SHAPESHIFTER,           SK_ARMOUR,         -1),
+    APT(SP_SHAPESHIFTER,           SK_DODGING,         2),
+    APT(SP_SHAPESHIFTER,           SK_STEALTH,         0),
+#if TAG_MAJOR_VERSION == 34
+    APT(SP_SHAPESHIFTER,           SK_STABBING,      UNUSABLE_SKILL),
+#endif
+    APT(SP_SHAPESHIFTER,           SK_SHIELDS,        -3),
+#if TAG_MAJOR_VERSION == 34
+    APT(SP_SHAPESHIFTER,           SK_TRAPS,         UNUSABLE_SKILL),
+#endif
+    APT(SP_SHAPESHIFTER,           SK_UNARMED_COMBAT,  0),
+    APT(SP_SHAPESHIFTER,           SK_SPELLCASTING,   -1),
+    APT(SP_SHAPESHIFTER,           SK_CONJURATIONS,   -2),
+    APT(SP_SHAPESHIFTER,           SK_HEXES,          -2),
+    APT(SP_SHAPESHIFTER,           SK_CHARMS,         -2),
+    APT(SP_SHAPESHIFTER,           SK_SUMMONINGS,     -2),
+    APT(SP_SHAPESHIFTER,           SK_NECROMANCY,     -2),
+    APT(SP_SHAPESHIFTER,           SK_TRANSLOCATIONS, -2),
+    APT(SP_SHAPESHIFTER,           SK_TRANSMUTATIONS,  3),
+    APT(SP_SHAPESHIFTER,           SK_FIRE_MAGIC,     -2),
+    APT(SP_SHAPESHIFTER,           SK_ICE_MAGIC,      -2),
+    APT(SP_SHAPESHIFTER,           SK_AIR_MAGIC,      -2),
+    APT(SP_SHAPESHIFTER,           SK_EARTH_MAGIC,    -2),
+    APT(SP_SHAPESHIFTER,           SK_POISON_MAGIC,   -2),
+    APT(SP_SHAPESHIFTER,           SK_INVOCATIONS,     0),
+    APT(SP_SHAPESHIFTER,           SK_EVOCATIONS,      0)
+
 };
 COMPILE_CHECK(ARRAYSZ(species_skill_aptitudes) == NUM_SPECIES * NUM_SKILLS);

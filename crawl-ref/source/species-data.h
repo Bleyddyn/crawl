@@ -20,6 +20,22 @@
 static const map<species_type, species_def> species_data =
 {
 
+{ SP_SHAPESHIFTER, {
+    "Ss",
+    "Shapeshifter", nullptr, nullptr,
+    SPF_NO_HAIR,
+    0, 0, 0, 5,
+    MONS_SHAPESHIFTER,
+    HT_LAND, US_ALIVE, SIZE_MEDIUM,
+    9, 7, 8, // 24
+    { STAT_STR, STAT_INT, STAT_DEX }, 4,
+    { { MUT_CLAWS, 2, 1 }, { MUT_FANGS, 2, 1}, },
+    { },
+    { },
+    { JOB_FIGHTER, JOB_BERSERKER, JOB_MONK, JOB_GLADIATOR },
+    { SK_UNARMED_COMBAT, SK_MACES_FLAILS, SK_STAVES },
+} },
+
 { SP_BARACHI, {
     "Ba",
     "Barachi", "Barachian", "Frog",

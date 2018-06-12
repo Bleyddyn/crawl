@@ -41,6 +41,7 @@
 #include "colour.h"
 #include "coordit.h"
 #include "dbg-scan.h"
+#include "dbg-util.h"
 #include "describe.h"
 #include "dgn-overview.h"
 #include "dungeon.h"
@@ -1651,6 +1652,11 @@ static void tag_construct_you(writer &th)
         mprf(MSGCH_ERROR, "Failed to save Lua data: %s", dlua.error.c_str());
 
     CANARY;
+
+    // how many shapes?
+    marshallUByte(th, 10);
+    for (int i = 0; i < 10; ++i)
+        marshallShort(th, you.shapes[i]);
 
     // Write a human-readable string out on the off chance that
     // we fail to be able to read this file back in using some later version.
@@ -3631,6 +3637,14 @@ static void tag_read_you(reader &th)
     }
 
     EAT_CANARY;
+
+    // how many shapes?
+    count = unmarshallUByte(th);
+    ASSERT(count >= 0);
+    for (int i = 0; i < 10; ++i)
+    {
+        you.shapes[i] = static_cast<monster_type>(unmarshallShort(th));
+    }
 
     crawl_state.save_rcs_version = unmarshallString(th);
 
@@ -5931,9 +5945,15 @@ static void tag_read_level_items(reader &th)
 #ifdef DEBUG_ITEM_SCAN
     // There's no way to fix this, even with wizard commands, so get
     // rid of it when restoring the game.
-    for (auto &item : mitm)
-        if (item.pos.origin())
-            item.clear();
+    for (int i = 0; i < item_count; ++i)
+    {
+        if (mitm[i].defined() && mitm[i].pos.origin())
+        {
+            debug_dump_item(mitm[i].name(DESC_PLAIN).c_str(), i, mitm[i],
+                                        "Fixing up unlinked temporary item:");
+            mitm[i].clear();
+        }
+    }
 #endif
 }
 

@@ -452,6 +452,8 @@ public:
     unsigned int frame_no;
 
 
+    FixedVector<monster_type, 10> shapes; // shapeshifter shape slots
+
     // ---------------------
     // The save file itself.
     // ---------------------

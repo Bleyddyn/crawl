@@ -75,11 +75,12 @@ private:
 protected:
     Form(transformation tran);
 public:
-    bool slot_available(int slot) const;
+    virtual bool slot_available(int slot) const;
     bool can_wield() const { return slot_available(EQ_WEAPON); }
     virtual bool can_wear_item(const item_def& item) const;
 
-    int get_duration(int pow) const;
+    virtual int get_duration(int pow) const;
+    virtual bool can_expire() const;
 
     /**
      * What monster corresponds to this form?
@@ -138,19 +139,22 @@ public:
     virtual bool can_offhand_punch() const { return can_wield(); }
     virtual string get_uc_attack_name(string default_name) const;
     virtual int get_ac_bonus() const;
+    virtual int get_dex_bonus() const;
+    virtual size_type get_size() const;
 
-    bool enables_flight() const;
+    virtual bool enables_flight() const;
     bool forbids_flight() const;
     bool forbids_swimming() const;
 
     bool player_can_fly() const;
     bool player_can_swim() const;
+    virtual int get_movement_speed() const { return 10; }
 
     string player_prayer_action() const;
 
+    virtual string get_short_name() const { return short_name; }
+
 public:
-    /// Status light ("Foo"); "" for none
-    const string short_name;
     /// "foo"; used for wizmode transformation dialogue
     const string wiz_name;
 
@@ -159,16 +163,12 @@ public:
 
     /// flat str bonus
     const int str_mod;
-    /// flat dex bonus
-    const int dex_mod;
 
     /// Equipment types unusable in this form.
     /** A bitfield representing a union of (1 << equipment_type) values for
      * equipment types that are unusable in this form.
      */
     const int blocked_slots;
-    /// size of the form
-    const size_type size;
     /// 10 * multiplier to hp/mhp (that is, 10 is base, 15 is 1.5x, etc)
     const int hp_mod;
 
@@ -218,6 +218,14 @@ protected:
 
     /// See Form::get_base_unarmed_damage().
     const int base_unarmed_damage;
+
+    /// Status light ("Foo"); "" for none
+    string short_name;
+
+    /// flat dex bonus
+    const int dex_mod;
+    /// size of the form
+    const size_type size;
 
 private:
     bool all_blocked(int slotflags) const;
@@ -270,7 +278,6 @@ bool form_can_swim(transformation form = you.form);
 bool form_likes_water(transformation form = you.form);
 bool form_changed_physiology(transformation form = you.form);
 bool form_can_bleed(transformation form = you.form);
-bool form_can_use_wand(transformation form = you.form);
 // Does the form keep the benefits of resistance, scale, and aux mutations?
 bool form_keeps_mutations(transformation form = you.form);
 
@@ -279,10 +286,13 @@ bool feat_dangerous_for_form(transformation which_trans,
 
 bool check_form_stat_safety(transformation new_form, bool quiet = false);
 
+// stype is for Shapeshifter form
 bool transform(int pow, transformation which_trans,
                bool involuntary = false, bool just_check = false,
-               string *fail_reason = nullptr);
+               string *fail_reason = nullptr,
+               monster_type stype = MONS_SHAPESHIFTER );
 
+               
 // skip_move: don't make player re-enter current cell
 void untransform(bool skip_move = false);
 

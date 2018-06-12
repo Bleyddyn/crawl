@@ -87,10 +87,10 @@ static const form_entry &_find_form_entry(transformation form)
 }
 
 Form::Form(const form_entry &fe)
-    : short_name(fe.short_name), wiz_name(fe.wiz_name),
+    : wiz_name(fe.wiz_name),
       duration(fe.duration),
-      str_mod(fe.str_mod), dex_mod(fe.dex_mod),
-      blocked_slots(fe.blocked_slots), size(fe.size), hp_mod(fe.hp_mod),
+      str_mod(fe.str_mod),
+      blocked_slots(fe.blocked_slots), hp_mod(fe.hp_mod),
       can_cast(fe.can_cast), spellcasting_penalty(fe.spellcasting_penalty),
       unarmed_hit_bonus(fe.unarmed_hit_bonus), uc_colour(fe.uc_colour),
       uc_attack_verbs(fe.uc_attack_verbs),
@@ -103,6 +103,7 @@ Form::Form(const form_entry &fe)
       long_name(fe.long_name), description(fe.description),
       resists(fe.resists),
       base_unarmed_damage(fe.base_unarmed_damage),
+      short_name(fe.short_name), dex_mod(fe.dex_mod), size(fe.size),
       can_fly(fe.can_fly), can_swim(fe.can_swim),
       flat_ac(fe.flat_ac), power_ac(fe.power_ac), xl_ac(fe.xl_ac),
       uc_brand(fe.uc_brand), uc_attack(fe.uc_attack),
@@ -197,6 +198,19 @@ int Form::get_duration(int pow) const
 }
 
 /**
+ * Can this form expire?
+ *   Vampires in vampire bat form don't expire.
+ *   Shapeshifters in one of thier shifted forms don't expire.
+ *   All other can expire.
+ * @return      true if this form can expire
+ */
+bool Form::can_expire() const
+{
+    bool vampbat = (you.species == SP_VAMPIRE && you.form == transformation::bat);
+    return !vampbat;
+}
+
+/**
  * Get a verbose description for the form.
  *
  * @param past_tense     Whether the description should be in past or present
@@ -258,6 +272,16 @@ int Form::get_ac_bonus() const
     return flat_ac * 100
            + power_ac * you.props[TRANSFORM_POW_KEY].get_int()
            + xl_ac * you.experience_level;
+}
+
+size_type Form::get_size() const
+{
+    return size;
+}
+
+int Form::get_dex_bonus() const
+{
+    return dex_mod;
 }
 
 /**
@@ -472,6 +496,7 @@ public:
      * as the one used to describe this form in @.
      */
     string get_transform_description() const override { return "your old self."; }
+    virtual size_type get_size() const { return SIZE_CHARACTER; }
 };
 
 class FormSpider : public Form
@@ -758,6 +783,11 @@ public:
         return make_stringf("a %sbat.",
                             you.species == SP_VAMPIRE ? "vampire " : "");
     }
+
+    virtual int get_movement_speed() const
+    {
+        return 5; // but allowed minimum is six
+    }
 };
 
 class FormPig : public Form
@@ -767,6 +797,10 @@ private:
     DISALLOW_COPY_AND_ASSIGN(FormPig);
 public:
     static const FormPig &instance() { static FormPig inst; return inst; }
+    virtual int get_movement_speed() const
+    {
+        return 7; // but allowed minimum is six
+    }
 };
 
 class FormAppendage : public Form
@@ -856,6 +890,11 @@ private:
     DISALLOW_COPY_AND_ASSIGN(FormWisp);
 public:
     static const FormWisp &instance() { static FormWisp inst; return inst; }
+
+    virtual int get_movement_speed() const
+    {
+        return 8;
+    }
 };
 
 #if TAG_MAJOR_VERSION == 34
@@ -966,6 +1005,244 @@ public:
         return 2 + normal_heads_damage + too_many_heads_damage;
     }
 
+    virtual int get_movement_speed() const
+    {
+        int mv = Form::get_movement_speed();
+        if( you.in_water() )
+            mv = 6;
+        return mv;
+    }
+};
+
+class FormShifter : public Form
+{
+private:
+    FormShifter() : Form(transformation::shifter), genus(MONS_SHAPESHIFTER) { }
+    DISALLOW_COPY_AND_ASSIGN(FormShifter);
+
+    monster_type genus;
+    monsterentry *mon_entry; // See mon-util.h
+
+public:
+    static FormShifter &instance() { static FormShifter inst; return inst; }
+
+    virtual bool can_expire() const
+    {
+        return false;
+    }
+
+    virtual int get_duration(int pow) const
+    {
+        return 1000;
+    }
+
+    void set_genus( monster_type stype )
+    {
+        genus = stype;
+        mon_entry = get_monster_data(genus);
+        string name = mons_type_name(genus, DESC_PLAIN);
+        short_name = uppercase_first(name);
+        mprf("AC bonus: %d.", get_ac_bonus());
+        mprf("Dex bonus: %d.", get_dex_bonus());
+        mprf("Size: %d.", mon_entry->size);
+        mprf("Speed: %d/%d.", mons_class_base_speed(genus), get_movement_speed());
+    }
+
+    virtual string get_long_name() const override
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return long_name;
+        string name = mons_type_name(genus, DESC_PLAIN);
+        return make_stringf("%s shape", name.c_str() );
+    }
+
+    monster_type get_equivalent_mons() const override
+    {
+        return genus;
+    }
+
+    /**
+     * Get a string describing the form you're turning into.
+     */
+    string get_transform_description() const override
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return article_a("larval shapeshifter");
+
+        string name = mons_type_name(genus, DESC_PLAIN);
+        return article_a(name.c_str());
+    }
+
+    /**
+     * @ description
+     */
+    string get_description(bool past_tense) const override
+    {
+        return make_stringf("You %s %s",
+                            past_tense ? "were" : "are",
+                            get_transform_description().c_str());
+    }
+
+    virtual int get_ac_bonus() const override
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return 0;
+
+        int flat_ac = mon_entry->AC;
+        int xl_ac = 10;
+        return flat_ac * 100
+               + xl_ac * you.experience_level;
+    }
+
+    virtual int get_dex_bonus() const
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return 0;
+
+        int flat_ev = mon_entry->ev;
+        flat_ev -= you.max_stat(STAT_DEX,true);
+        flat_ev /= 4;
+        return flat_ev;
+    }
+
+    virtual size_type get_size() const
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return SIZE_CHARACTER;
+        return mon_entry->size;
+    }
+
+    /**
+     * Get the name displayed in the UI for the form's unarmed-combat 'weapon'.
+     */
+    string get_uc_attack_name(string default_name) const override
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return "claws";
+
+        string uc("claws");
+        for( int i = 0; i < MAX_NUM_ATTACKS; ++i )
+            switch(mon_entry->attack[i].type)
+            {
+                case AT_HIT: uc = "hands"; break;
+                case AT_BITE: uc = "fangs"; break;
+                case AT_STING: uc = "sting"; break;
+                case AT_TOUCH: uc = "hands"; break;
+                case AT_CLAW: uc = "claws"; break;
+                case AT_PECK: uc = "beak"; break;
+                case AT_HEADBUTT: uc = "horns"; break;
+                case AT_PUNCH: uc = "fist"; break;
+                case AT_KICK: uc = "talons"; break;
+                case AT_TENTACLE_SLAP: uc = "tentacle"; break;
+                case AT_TAIL_SLAP: uc = "tail"; break;
+                case AT_TRUNK_SLAP: uc = "trunk"; break;
+                default:
+                    break;
+            }
+        return uc;
+    }
+
+    brand_type get_uc_brand() const
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return Form::get_uc_brand();
+
+        brand_type res = SPWPN_NORMAL;
+
+        for( int i = 0; i < MAX_NUM_ATTACKS; ++i )
+        {
+            switch(mon_entry->attack[i].flavour)
+            {
+                case AF_POISON_PARALYSE:
+                case AF_POISON:
+                case AF_POISON_STRONG:
+                    res = SPWPN_VENOM;
+                    break;
+
+                default:
+                    break;
+            }
+        }
+        //if( SPWPN_NORMAL != res )
+        //    mprf( "UC Attack brand: %d.", res );
+        return res;
+   }
+
+    /**
+     * Find the player's base unarmed damage in this form.
+     */
+    virtual int get_base_unarmed_damage() const override
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return 3 + (2 * 3); // claws 2 mutation
+
+        // loop through the attacks and see which is appropriate?
+        //mon_attack_def attack[MAX_NUM_ATTACKS];
+        int uc = 0;
+        for( int i = 0; i < MAX_NUM_ATTACKS; ++i )
+        {
+            /*
+struct mon_attack_def
+{
+    attack_type     type;
+    attack_flavour  flavour;
+    int             damage;
+};
+*/
+            switch(mon_entry->attack[i].type)
+            {
+                case AT_HIT:
+                case AT_BITE:
+                case AT_STING:
+                case AT_TOUCH:
+                case AT_CLAW:
+                case AT_PECK:
+                case AT_HEADBUTT:
+                case AT_PUNCH:
+                case AT_KICK:
+                case AT_TENTACLE_SLAP:
+                case AT_TAIL_SLAP:
+                case AT_TRUNK_SLAP:
+                    uc += mon_entry->attack[i].damage;
+                    break;
+                default:
+                    break;
+            }
+        }
+        dprf("Unarmed base: %d.", uc);
+        return uc;
+    }
+
+    bool can_offhand_punch() const override { return true; }
+
+    bool enables_flight() const override
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return false;
+        return mons_class_flag(genus, M_FLIES);
+    }
+
+    virtual int get_movement_speed() const
+    {
+        int mon_speed = mons_class_base_speed(genus);
+        int adj = (mon_speed - 10) / 4;
+        // normal 5
+        // bat    5
+        // pig    7
+        // wisp   8
+        // hydra  6 in water
+        return 10 - adj;
+    }
+
+    virtual bool slot_available(int slot) const
+    {
+        if( MONS_SHAPESHIFTER == genus)
+            return Form::slot_available(slot);
+        mon_itemuse_type use = mons_class_itemuse(genus);
+        if( (MONUSE_STARTING_EQUIPMENT == use) || (MONUSE_WEAPONS_ARMOUR == use) )
+            return true;
+        return false;
+    }
 };
 
 static const Form* forms[] =
@@ -992,6 +1269,7 @@ static const Form* forms[] =
     &FormFungus::instance(),
     &FormShadow::instance(),
     &FormHydra::instance(),
+    &FormShifter::instance(),
 };
 
 const Form* get_form(transformation xform)
@@ -1108,11 +1386,6 @@ bool form_changed_physiology(transformation form)
 bool form_can_bleed(transformation form)
 {
     return get_form(form)->can_bleed != FC_FORBID;
-}
-
-bool form_can_use_wand(transformation form)
-{
-    return form_can_wield(form) || form == transformation::dragon;
 }
 
 // Used to mark forms which keep most form-based mutations.
@@ -1467,7 +1740,7 @@ static bool _transformation_is_safe(transformation which_trans,
 bool check_form_stat_safety(transformation new_form, bool quiet)
 {
     const int str_mod = get_form(new_form)->str_mod - get_form()->str_mod;
-    const int dex_mod = get_form(new_form)->dex_mod - get_form()->dex_mod;
+    const int dex_mod = get_form(new_form)->get_dex_bonus() - get_form()->get_dex_bonus();
 
     const bool bad_str = you.strength() > 0 && str_mod + you.strength() <= 0;
     const bool bad_dex = you.dex() > 0 && dex_mod + you.dex() <= 0;
@@ -1597,7 +1870,7 @@ undead_form_reason lifeless_prevents_form(transformation which_trans,
  *                          to intervene. (That may be the only case.)
  */
 bool transform(int pow, transformation which_trans, bool involuntary,
-               bool just_check, string *fail_reason)
+               bool just_check, string *fail_reason, monster_type stype)
 {
     const transformation previous_trans = you.form;
     const bool was_flying = you.airborne();
@@ -1616,7 +1889,8 @@ bool transform(int pow, transformation which_trans, bool involuntary,
     if (!involuntary && crawl_state.is_god_acting())
         involuntary = true;
 
-    if (you.transform_uncancellable)
+    // shifter form is 'uncancellable' in the normal transform sense, but they can always change to a different shape
+    if (you.transform_uncancellable && !(transformation::shifter == you.form))
     {
         msg = "You are stuck in your current form!";
         success = false;
@@ -1635,7 +1909,7 @@ bool transform(int pow, transformation which_trans, bool involuntary,
     }
 
     // This must occur before the untransform() and the undead_state() check.
-    if (previous_trans == which_trans)
+    if ( (previous_trans == which_trans) && (transformation::shifter != which_trans) )
     {
         if (just_check)
             return true;
@@ -1685,6 +1959,15 @@ bool transform(int pow, transformation which_trans, bool involuntary,
     if (!just_check && previous_trans != transformation::none)
         untransform(true);
 
+    // All checks done, transformation will take place now.
+    if( transformation::shifter == which_trans )
+    {
+        if( MONS_PROGRAM_BUG == stype )
+            stype = MONS_SHAPESHIFTER;
+        FormShifter::instance().set_genus(stype);
+        you.transform_uncancellable = true;
+    }
+
     set<equipment_type> rem_stuff = _init_equipment_removal(which_trans);
 
     // if going into lichform causes us to drop a holy weapon with consequences
@@ -1729,7 +2012,6 @@ bool transform(int pow, transformation which_trans, bool involuntary,
     if (just_check)
         return true;
 
-    // All checks done, transformation will take place now.
     you.redraw_quiver       = true;
     you.redraw_evasion      = true;
     you.redraw_armour_class = true;
@@ -1753,7 +2035,7 @@ bool transform(int pow, transformation which_trans, bool involuntary,
     you.props[TRANSFORM_POW_KEY] = pow;
 
     const int str_mod = get_form(which_trans)->str_mod;
-    const int dex_mod = get_form(which_trans)->dex_mod;
+    const int dex_mod = get_form(which_trans)->get_dex_bonus();
 
     if (str_mod)
         notify_stat_change(STAT_STR, str_mod, true);
@@ -1965,7 +2247,7 @@ void untransform(bool skip_move)
         mprf(MSGCH_DURATION, "%s", message.c_str());
 
     const int str_mod = get_form(old_form)->str_mod;
-    const int dex_mod = get_form(old_form)->dex_mod;
+    const int dex_mod = get_form(old_form)->get_dex_bonus();
 
     if (str_mod)
         notify_stat_change(STAT_STR, -str_mod, true);
