@@ -156,8 +156,8 @@ bool Form::can_wear_item(const item_def& item) const
     if (is_unrandom_artefact(item, UNRAND_LEAR))
         return !(blocked_slots & EQF_LEAR); // ok if no body slots blocked
 
-//    if( get_armour_ego_type(item) == SPARM_UNARMED )
-//        return true;
+    if( get_armour_ego_type(item) == SPARM_UNARMED )
+        return true;
 
     return slot_available(get_armour_slot(item));
 }
@@ -1415,16 +1415,30 @@ _init_equipment_removal(transformation form)
         const equipment_type eq = static_cast<equipment_type>(i);
         const item_def *pitem = you.slot_item(eq, true);
 
+        if( pitem )
+        {
+            if( get_armour_ego_type(*pitem) == SPARM_UNARMED )
+            {
+                mprf("%s shift and flex along with your transformation.", pitem->name(DESC_YOUR).c_str() );
+                continue;
+            }
+            if (is_unrandom_artefact(*pitem, UNRAND_VEIL))
+            {
+                mprf("%s shifts and flows, adjusting to your new shape.", pitem->name(DESC_YOUR).c_str() );
+                continue;
+            }
+        }
+
         if (pitem && (get_form(form)->blocked_slots & SLOTF(i)
                       || (i != EQ_RING_AMULET
                           && !get_form(form)->can_wear_item(*pitem))))
         {
-            if( get_armour_ego_type(*pitem) == SPARM_UNARMED )
-                mprf("%s shift and flex along with your transformation.", pitem->name(DESC_YOUR).c_str() );
+            //if( get_armour_ego_type(*pitem) == SPARM_UNARMED )
+            //    mprf("%s shift and flex along with your transformation.", pitem->name(DESC_YOUR).c_str() );
             // The shapeshifter cloak doesn't meld into any form
-            if (is_unrandom_artefact(*pitem, UNRAND_VEIL))
-                mprf("%s shifts and flows, adjusting to your new shape.", pitem->name(DESC_YOUR).c_str() );
-            else
+            //if (is_unrandom_artefact(*pitem, UNRAND_VEIL))
+            //    mprf("%s shifts and flows, adjusting to your new shape.", pitem->name(DESC_YOUR).c_str() );
+            //else
                 result.insert(eq);
         }
     }

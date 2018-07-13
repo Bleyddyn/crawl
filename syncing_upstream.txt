@@ -1,0 +1,5 @@
+https://help.github.com/articles/syncing-a-fork/
+
+git fetch upstream
+git checkout master # My local master branch
+git merge upstream/master # Merge upstream's master into my master branch
