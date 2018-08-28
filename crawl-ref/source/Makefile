@@ -111,7 +111,7 @@ CFOTHERS := -pipe $(EXTERNAL_FLAGS)
 CFWARN := 
 CFWARN_L := -Wall -Wformat-security -Wundef
 
-DEFINES := $(EXTERNAL_DEFINES)
+DEFINES := -DTOURNEY='"0.22"' $(EXTERNAL_DEFINES)
 
 ifndef ANDROID
 LDFLAGS :=
@@ -717,13 +717,16 @@ DEFINES_L += -DUSE_SOUND
 endif
 
 # On clang, unknown -Wfoo is merely a warning, thus -Werror.
-CFWARN_L += $(shell w=-Wno-array-bounds;echo|$(GXX) -E -x c++ - -Werror $$w >/dev/null 2>&1 && echo $$w)
-CFWARN_L += $(shell w=-Wno-format-zero-length;echo|$(GXX) -E -x c++ - -Werror $$w >/dev/null 2>&1 && echo $$w)
+# For `no-` options, gcc will only emit an error if there are other errors, so
+# we need to check positive forms (applies to array-bounds, format-zero-length,
+# and tautological-unsigned-enum-zero-compare.)
+CFWARN_L += $(shell w=array-bounds;echo|$(GXX) -E -x c++ - -Werror -W$$w >/dev/null 2>&1 && echo -Wno-$$w)
+CFWARN_L += $(shell w=format-zero-length;echo|$(GXX) -E -x c++ - -Werror -W$$w >/dev/null 2>&1 && echo -Wno-$$w)
 CFWARN_L += $(shell w=-Wmissing-declarations;echo|$(GXX) -E -x c++ - -Werror $$w >/dev/null 2>&1 && echo $$w)
 CFWARN_L  += $(shell w=-Wredundant-decls;echo|$(GXX) -E -x c++ - -Werror $$w >/dev/null 2>&1 && echo $$w)
 # Avoid warnings about safety checks that might be necessary on other compilers
 # where the same enum is assigned a signed underlying type.
-CFWARN_L  += $(shell w=-Wno-tautological-unsigned-enum-zero-compare;echo|$(GXX) -E -x c++ - -Werror $$w >/dev/null 2>&1 && echo $$w)
+CFWARN_L  += $(shell w=tautological-unsigned-enum-zero-compare;echo|$(GXX) -E -x c++ - -Werror -W$$w >/dev/null 2>&1 && echo -Wno-$$w)
 
 CFWARN_L += -Wno-parentheses -Wwrite-strings -Wshadow -pedantic
 CFOTHERS_L = $(EXTERNAL_FLAGS_L) $(EXTRA_FLAGS) $(DEFINES) $(SDL2_CFLAGS)
@@ -1668,6 +1671,7 @@ source: removeold prebuildyacc
 	  done
 	find build -name .gitignore -execdir rm -f '{}' +
 	git describe --tags $(MERGE_BASE) > $(BSRC)util/release_ver
+	cp build/LICENSE build/crawl-ref/LICENSE
 	mv build/crawl-ref build/$(PKG_SRC_DIR)
 
 package-tarball-deps: source
@@ -1682,7 +1686,7 @@ package-zipball-deps: source
 	fi
 
 package-tarball-nodeps: source
-	cd build && tar cfJ ../../../$(SRC_PKG_TAR_NODEPS) --exclude contrib $(PKG_SRC_DIR)
+	cd build && tar cfJ ../../../$(SRC_PKG_TAR_NODEPS) --exclude contrib --exclude simplebar.js $(PKG_SRC_DIR)
 
 package-source: package-tarball-deps package-zipball-deps package-tarball-nodeps
 	rm -rf build
@@ -1716,7 +1720,7 @@ endif
 	mv build-win/docs/CREDITS.txt build-win/
 	echo $(SRC_VERSION) >build-win/version.txt
 
-ZIP_DOCS=../licence.txt
+ZIP_DOCS=../../LICENSE
 package-windows-zips:
 ifneq ($(GAME),crawl.exe)
 	@echo "This is only for Windows; please specify CROSSHOST.";false

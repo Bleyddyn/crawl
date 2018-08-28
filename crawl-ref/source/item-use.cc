@@ -8,6 +8,7 @@
 #include "item-use.h"
 
 #include "ability.h"
+#include "acquire.h"
 #include "act-iter.h"
 #include "areas.h"
 #include "artefact.h"
@@ -1266,7 +1267,7 @@ static int _prompt_ring_to_remove(int new_ring)
         slot_chars.push_back(index_to_letter(rings.back()->link));
     }
 
-    if (slot_chars.size() + 2 > msgwin_lines())
+    if (slot_chars.size() + 2 > msgwin_lines() || ui::has_layout())
     {
         // force a menu rather than a more().
         return EQ_NONE;
@@ -1554,10 +1555,10 @@ static bool _swap_rings(int ring_slot)
         if (unwanted == EQ_NONE)
         {
             // do this here rather than in remove_ring so that the custom
-            // message is visible. TODO: show only worn rings
+            // message is visible.
             unwanted = prompt_invent_item(
                     "You're wearing all the rings you can. Remove which one?",
-                    MT_INVLIST, OBJ_JEWELLERY, OPER_REMOVE,
+                    MT_INVLIST, OSEL_UNCURSED_WORN_RINGS, OPER_REMOVE,
                     invprompt_flag::no_warning | invprompt_flag::hide_known);
         }
 
@@ -2620,7 +2621,8 @@ static bool _is_cancellable_scroll(scroll_type scroll)
 #endif
            || scroll == SCR_BRAND_WEAPON
            || scroll == SCR_ENCHANT_WEAPON
-           || scroll == SCR_MAGIC_MAPPING;
+           || scroll == SCR_MAGIC_MAPPING
+           || scroll == SCR_ACQUIREMENT;
 }
 
 /**
@@ -2907,7 +2909,10 @@ void read_scroll(item_def& scroll)
 
     case SCR_ACQUIREMENT:
         if (!alreadyknown)
+        {
+            mpr(pre_succ_msg);
             mpr("This is a scroll of acquirement!");
+        }
 
         // included in default force_more_message
         // Identify it early in case the player checks the '\' screen.
@@ -2924,7 +2929,11 @@ void read_scroll(item_def& scroll)
             // IDing scrolls. (Not an interesting ID game mechanic!)
         }
 
-        run_uncancel(UNC_ACQUIREMENT, AQ_SCROLL);
+        if (!alreadyknown)
+            run_uncancel(UNC_ACQUIREMENT, AQ_SCROLL);
+        else
+            cancel_scroll = !acquirement(OBJ_RANDOM, AQ_SCROLL, false, nullptr,
+                    false, true);
         break;
 
     case SCR_FEAR:

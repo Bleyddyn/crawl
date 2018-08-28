@@ -262,28 +262,40 @@ bool check_moveto_terrain(const coord_def& p, const string &move_verb,
     return true;
 }
 
+bool check_moveto_exclusions(const vector<coord_def> &areas,
+                             const string &move_verb,
+                             bool *prompted)
+{
+    if (is_excluded(you.pos()) || crawl_state.disables[DIS_CONFIRMATIONS])
+        return true;
+
+    int count = 0;
+    for (auto p : areas)
+    {
+        if (is_excluded(p) && !is_stair_exclusion(p))
+            count++;
+    }
+    if (count == 0)
+        return true;
+    const string prompt = make_stringf((count == (int) areas.size() ?
+                    "Really %s into a travel-excluded area?" :
+                    "You might %s into a travel-excluded area, are you sure?"),
+                              move_verb.c_str());
+
+    if (prompted)
+        *prompted = true;
+    if (!yesno(prompt.c_str(), false, 'n'))
+    {
+        canned_msg(MSG_OK);
+        return false;
+    }
+    return true;
+}
+
 bool check_moveto_exclusion(const coord_def& p, const string &move_verb,
                             bool *prompted)
 {
-    string prompt;
-
-    if (is_excluded(p)
-        && !is_stair_exclusion(p)
-        && !is_excluded(you.pos())
-        && !crawl_state.disables[DIS_CONFIRMATIONS])
-    {
-        if (prompted)
-            *prompted = true;
-        prompt = make_stringf("Really %s into a travel-excluded area?",
-                              move_verb.c_str());
-
-        if (!yesno(prompt.c_str(), false, 'n'))
-        {
-            canned_msg(MSG_OK);
-            return false;
-        }
-    }
-    return true;
+    return check_moveto_exclusions({p}, move_verb, prompted);
 }
 
 bool check_moveto(const coord_def& p, const string &move_verb, const string &msg)
@@ -2393,8 +2405,8 @@ void forget_map(bool rot)
             continue;
 
         env.map_knowledge(p).clear();
-        if (env.map_forgotten.get())
-            (*env.map_forgotten.get())(p).clear();
+        if (env.map_forgotten)
+            (*env.map_forgotten)(p).clear();
         StashTrack.update_stash(p);
 #ifdef USE_TILE
         tile_forget_map(p);
@@ -2738,18 +2750,35 @@ void recalc_and_scale_hp()
 int xp_to_level_diff(int xp, int scale)
 {
     ASSERT(xp >= 0);
-    int adjusted_xp = you.experience + xp;
-    int level = you.experience_level;
-    while (adjusted_xp >= (int) exp_needed(level + 1))
-        level++;
+    const int adjusted_xp = you.experience + xp;
+    int projected_level = you.experience_level;
+    while (you.experience >= exp_needed(projected_level + 1))
+        projected_level++; // handle xl 27 chars
+    int adjusted_level = projected_level;
+
+    // closest whole number level, rounding down
+    while (adjusted_xp >= (int) exp_needed(adjusted_level + 1))
+        adjusted_level++;
     if (scale > 1)
     {
-        unsigned int remainder = adjusted_xp - (int) exp_needed(level);
-        unsigned int denom = exp_needed(level + 1) - (int) exp_needed(level);
-        return (level - you.experience_level) * scale +
-                    (remainder * scale / denom);
+        // TODO: what is up with all the casts here?
+
+        // decimal scaled version of current level including whatever fractional
+        // part scale can handle
+        const int cur_level_scaled = projected_level * scale
+                + (you.experience - (int) exp_needed(projected_level)) * scale /
+                    ((int) exp_needed(projected_level + 1)
+                                    - (int) exp_needed(projected_level));
+
+        // decimal scaled version of what adjusted_xp would get you
+        const int adjusted_level_scaled = adjusted_level * scale
+                + (adjusted_xp - (int) exp_needed(adjusted_level)) * scale /
+                    ((int) exp_needed(adjusted_level + 1)
+                                    - (int) exp_needed(adjusted_level));
+        // TODO: this would be more usable with better rounding behavior
+        return adjusted_level_scaled - cur_level_scaled;
     } else
-        return level - you.experience_level;
+        return adjusted_level - projected_level;
 }
 
 /**
@@ -3134,7 +3163,7 @@ int player_stealth()
     stealth += STEALTH_PIP * you.scan_artefacts(ARTP_STEALTH);
 
     stealth += STEALTH_PIP * you.wearing(EQ_RINGS, RING_STEALTH);
-    stealth -= STEALTH_PIP * you.wearing(EQ_RINGS, RING_LOUDNESS);
+    stealth -= STEALTH_PIP * you.wearing(EQ_RINGS, RING_ATTENTION);
 
     if (you.duration[DUR_STEALTH])
         stealth += STEALTH_PIP * 2;
@@ -3432,7 +3461,7 @@ void display_char_status()
     status_info inf;
     for (unsigned i = 0; i <= STATUS_LAST_STATUS; ++i)
     {
-        if (fill_status_info(i, &inf) && !inf.long_text.empty())
+        if (fill_status_info(i, inf) && !inf.long_text.empty())
             mpr(inf.long_text);
     }
     string cinfo = _constriction_description();

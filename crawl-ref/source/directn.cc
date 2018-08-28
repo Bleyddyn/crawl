@@ -427,7 +427,7 @@ void direction_chooser::describe_cell() const
             print_items_description();
         if (just_looking || show_floor_desc)
         {
-            print_floor_description(true);
+            print_floor_description(show_boring_feats);
             if (!did_cloud)
                 _print_cloud_desc(target());
         }
@@ -512,6 +512,7 @@ direction_chooser::direction_chooser(dist& moves_,
     top_prompt(args.top_prompt),
     behaviour(args.behaviour),
     show_floor_desc(args.show_floor_desc),
+    show_boring_feats(args.show_boring_feats),
     hitfunc(args.hitfunc),
     default_place(args.default_place),
     unrestricted(args.unrestricted),
@@ -882,6 +883,8 @@ bool direction_chooser::move_is_ok() const
     {
         if (!cell_see_cell(you.pos(), target(), LOS_NO_TRANS))
         {
+            if (hitfunc && hitfunc->can_affect_unseen())
+                return true; // is this too broad?
             if (you.see_cell(target()))
                 mprf(MSGCH_EXAMINE_FILTER, "There's something in the way.");
             else
@@ -1092,6 +1095,31 @@ void direction_chooser::set_target(const coord_def& new_target)
     moves.target = new_target;
 }
 
+static void _draw_ray_cell(coord_def p, coord_def target, aff_type aff)
+{
+ #ifdef USE_TILE
+    tile_place_ray(p, aff);
+#endif
+#ifndef USE_TILE_LOCAL
+    int bcol = BLACK;
+    if (aff < 0)
+        bcol = DARKGREY;
+    else if (aff < AFF_YES)
+        bcol = (p == target) ? RED : MAGENTA;
+    else if (aff == AFF_YES)
+        bcol = (p == target) ? LIGHTRED : LIGHTMAGENTA;
+    else if (aff == AFF_LANDING)
+        bcol = (p == target) ? LIGHTGREEN : GREEN;
+    else if (aff == AFF_MULTIPLE)
+        bcol = (p == target) ? LIGHTCYAN : CYAN;
+    else
+        die("unhandled aff %d", aff);
+
+    int mbcol = (p == target) ? bcol : bcol | COLFLAG_REVERSE;
+    _draw_ray_glyph(p, bcol, '*', mbcol);
+#endif
+}
+
 void direction_chooser::draw_beam_if_needed()
 {
     if (!need_beam_redraw)
@@ -1122,31 +1150,12 @@ void direction_chooser::draw_beam_if_needed()
 #endif
             return;
         }
-        for (radius_iterator ri(you.pos(), LOS_DEFAULT); ri; ++ri)
+        const los_type los = hitfunc->can_affect_unseen()
+                                            ? LOS_NONE : LOS_DEFAULT;
+        for (radius_iterator ri(you.pos(), los); ri; ++ri)
             if (aff_type aff = hitfunc->is_affected(*ri))
-            {
-#ifdef USE_TILE
-                tile_place_ray(*ri, aff);
-#endif
-#ifndef USE_TILE_LOCAL
-                int bcol = BLACK;
-                if (aff < 0)
-                    bcol = DARKGREY;
-                else if (aff < AFF_YES)
-                    bcol = (*ri == target()) ? RED : MAGENTA;
-                else if (aff == AFF_YES)
-                    bcol = (*ri == target()) ? LIGHTRED : LIGHTMAGENTA;
-                else if (aff == AFF_LANDING)
-                    bcol = (*ri == target()) ? LIGHTGREEN : GREEN;
-                else if (aff == AFF_MULTIPLE)
-                    bcol = (*ri == target()) ? LIGHTCYAN : CYAN;
-                else
-                    die("unhandled aff %d", aff);
+                _draw_ray_cell(*ri, target(), aff);
 
-                int mbcol = (*ri == target()) ? bcol : bcol | COLFLAG_REVERSE;
-                _draw_ray_glyph(*ri, bcol, '*', mbcol);
-#endif
-            }
 #ifdef USE_TILE
         viewwindow(true, true);
 #endif
@@ -1531,11 +1540,12 @@ void direction_chooser::print_floor_description(bool boring_too) const
 
 #ifdef DEBUG_DIAGNOSTICS
     // [ds] Be more verbose in debug mode.
-    _debug_describe_feature_at(target());
-#else
+    if (you.wizard)
+        _debug_describe_feature_at(target());
+    else
+#endif
     mprf(MSGCH_EXAMINE_FILTER, "%s",
          feature_description_at(target(), true).c_str());
-#endif
 }
 
 void direction_chooser::reinitialize_move_flags()
@@ -2000,6 +2010,10 @@ void direction_chooser::finalize_moves()
 
 bool direction_chooser::choose_direction()
 {
+#ifdef USE_TILE
+    ui::cutoff_point ui_cutoff_point;
+#endif
+
     if (restricts == DIR_DIR)
         return choose_compass();
 
@@ -3440,7 +3454,7 @@ static void _debug_describe_feature_at(const coord_def &where)
     }
     const string traveldest = _stair_destination_description(where);
     string height_desc;
-    if (env.heightmap.get())
+    if (env.heightmap)
         height_desc = make_stringf(" (height: %d)", (*env.heightmap)(where));
     const dungeon_feature_type feat = grd(where);
 

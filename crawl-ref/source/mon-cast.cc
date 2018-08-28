@@ -76,6 +76,7 @@
 #include "timed-effects.h"
 #include "traps.h"
 #include "travel.h"
+#include "unwind.h"
 #include "view.h"
 #include "viewchar.h"
 #include "xom.h"
@@ -1835,7 +1836,6 @@ bool setup_mons_cast(const monster* mons, bolt &pbolt, spell_type spell_cast,
 #if TAG_MAJOR_VERSION == 34
     case SPELL_EPHEMERAL_INFUSION:
 #endif
-    case SPELL_CHAIN_OF_CHAOS:
     case SPELL_BLACK_MARK:
 #if TAG_MAJOR_VERSION == 34
     case SPELL_GRAND_AVATAR:
@@ -2239,6 +2239,18 @@ static void _set_door(set<coord_def> door, dungeon_feature_type feat)
     }
 }
 
+static int _tension_door_closed(set<coord_def> door,
+                                                dungeon_feature_type old_feat)
+{
+    // this unwind is a bit heavy, but because out-of-los clouds dissipate
+    // instantly, they can be wiped out by these door tests.
+    unwind_var<map<coord_def, cloud_struct>> cloud_state(env.cloud);
+    _set_door(door, DNGN_CLOSED_DOOR);
+    const int new_tension = get_tension(GOD_NO_GOD);
+    _set_door(door, old_feat);
+    return new_tension;
+}
+
 /**
  * Can any actors and items be pushed out of a doorway? An actor can be pushed
  * for purposes of this check if there is a habitable target location and the
@@ -2319,9 +2331,7 @@ static vector<coord_def> _get_push_spaces_max_tension(const coord_def& pos,
         dungeon_feature_type old_feat = grd(pos);
 
         act->move_to_pos(c);
-        _set_door(all_door, DNGN_CLOSED_DOOR);
-        int new_tension = get_tension(GOD_NO_GOD);
-        _set_door(all_door, old_feat);
+        int new_tension = _tension_door_closed(all_door, old_feat);
         act->move_to_pos(pos);
 
         if (new_tension == max_tension)
@@ -2375,9 +2385,7 @@ static bool _should_force_door_shut(const coord_def& door)
         you.move_to_pos(newpos);
     }
 
-    _set_door(all_door, DNGN_CLOSED_DOOR);
-    const int new_tension = get_tension(GOD_NO_GOD);
-    _set_door(all_door, old_feat);
+    const int new_tension = _tension_door_closed(all_door, old_feat);
 
     if (player_in_door)
         you.move_to_pos(oldpos);
@@ -3207,11 +3215,6 @@ static bool _elec_vulnerable(actor* victim)
 static bool _mutation_vulnerable(actor* victim)
 {
     return victim->can_mutate();
-}
-
-static bool _dummy_vulnerable(actor* victim)
-{
-    return true;
 }
 
 static void _cast_black_mark(monster* agent)
@@ -4807,7 +4810,7 @@ static coord_def _mons_fragment_target(const monster &mon)
         bool temp;
         bolt beam;
         if (!setup_fragmentation_beam(beam, pow, mons, mons->target, true,
-                                      nullptr, temp, temp))
+                                      nullptr, temp))
         {
             return target;
         }
@@ -4825,7 +4828,7 @@ static coord_def _mons_fragment_target(const monster &mon)
 
         bolt beam;
         if (!setup_fragmentation_beam(beam, pow, mons, *di, true, nullptr,
-                                      temp, temp))
+                                      temp))
         {
             continue;
         }
@@ -6373,7 +6376,6 @@ void mons_cast(monster* mons, bolt pbolt, spell_type spell_cast,
     }
 
     case SPELL_CHAIN_LIGHTNING:
-    case SPELL_CHAIN_OF_CHAOS:
         cast_chain_spell(spell_cast, splpow, mons);
         return;
 
@@ -7595,7 +7597,7 @@ static void _mons_awaken_earth(monster &mon, const coord_def &target)
     for (fair_adjacent_iterator ai(target, false); ai; ++ai)
     {
         if (!_feat_is_awakenable(grd(*ai))
-            || env.markers.property_at(*ai, MAT_ANY, "veto_disintegrate")
+            || env.markers.property_at(*ai, MAT_ANY, "veto_dig")
                == "veto")
         {
             continue;
@@ -8018,8 +8020,6 @@ static bool _ms_waste_of_time(monster* mon, mon_spell_slot slot)
     case SPELL_CHAIN_LIGHTNING:
         return !_trace_los(mon, _elec_vulnerable)
                 || you.visible_to(mon) && friendly; // don't zap player
-    case SPELL_CHAIN_OF_CHAOS:
-        return !_trace_los(mon, _dummy_vulnerable);
     case SPELL_CORRUPTING_PULSE:
         return !_trace_los(mon, _mutation_vulnerable)
                || you.visible_to(mon)
