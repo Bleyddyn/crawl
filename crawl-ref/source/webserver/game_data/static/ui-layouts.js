@@ -567,11 +567,9 @@ function ($, comm, client, ui, enums, cr, util, scroller, main, gui, player) {
         var body_html = util.formatted_string_to_html(desc.text);
         if (desc.highlight !== "")
         {
-            var rexp = '[^\n]*'+desc.highlight+'[^\n]*\n?';
+            var rexp = '[^\n]*('+desc.highlight+')[^\n]*\n?';
             var re = new RegExp(rexp, 'g');
-            console.log(rexp);
             body_html = body_html.replace(re, function (line) {
-                console.log(line)
                 return "<span class=highlight>" + line + "</span>";
             });
         }
