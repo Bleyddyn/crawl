@@ -338,17 +338,34 @@ size_type monster::body_size(size_part_type /* psize */, bool /* base */) const
     return mi.body_size();
 }
 
+/**
+ * Returns brand information from an associated ghost_demon, if any.
+ * Used for player ghosts, illusions, and pan lords. Safe to call if `ghost`
+ * is not set; will just return SPWPN_NORMAL for this case.
+ */
+brand_type monster::ghost_brand() const
+{
+    if (!ghost || !(type == MONS_PANDEMONIUM_LORD || mons_is_pghost(type)))
+        return SPWPN_NORMAL;
+    return ghost->brand;
+}
+
+/**
+ * Is there a ghost_demon associated with this monster that has a brand set?
+ * Used for player ghosts, illusions, and pan lords. Safe to call if `ghost`
+ * is not set.
+ */
+bool monster::has_ghost_brand() const
+{
+    return ghost_brand() != SPWPN_NORMAL;
+}
+
 brand_type monster::damage_brand(int which_attack)
 {
     const item_def *mweap = weapon(which_attack);
 
     if (!mweap)
-    {
-        if (mons_is_ghost_demon(type))
-            return ghost->brand;
-
-        return SPWPN_NORMAL;
-    }
+        return ghost_brand();
 
     return !is_range_weapon(*mweap) ? static_cast<brand_type>(get_weapon_brand(*mweap))
                                     : SPWPN_NORMAL;
@@ -787,81 +804,76 @@ bool monster::likes_wand(const item_def &item) const
     return wand_charge_value(item.sub_type) + get_hit_dice() * 6 <= 72;
 }
 
-void monster::equip_weapon(item_def &item, bool msg)
+void monster::equip_weapon_message(item_def &item)
 {
-    if (msg)
-    {
-        const string str = " wields " +
-                           item.name(DESC_A, false, false, true, false,
-                                     ISFLAG_CURSED) + ".";
-        msg = simple_monster_message(*this, str.c_str());
-    }
+    const string str = " wields " +
+                       item.name(DESC_A, false, false, true, false,
+                                 ISFLAG_CURSED) + ".";
+    simple_monster_message(*this, str.c_str());
 
     const int brand = get_weapon_brand(item);
-    if (msg)
+
+    bool message_given = true;
+    switch (brand)
     {
-        bool message_given = true;
-        switch (brand)
-        {
-        case SPWPN_FLAMING:
-            mpr("It bursts into flame!");
-            break;
-        case SPWPN_FREEZING:
-            mpr(is_range_weapon(item) ? "It is covered in frost."
-                                      : "It glows with a cold blue light!");
-            break;
-        case SPWPN_HOLY_WRATH:
-            mpr("It softly glows with a divine radiance!");
-            break;
-        case SPWPN_ELECTROCUTION:
-            mprf(MSGCH_SOUND, "You hear the crackle of electricity.");
-            break;
-        case SPWPN_VENOM:
-            mpr("It begins to drip with poison!");
-            break;
-        case SPWPN_DRAINING:
-            mpr("You sense an unholy aura.");
-            break;
-        case SPWPN_DISTORTION:
-            mpr("Its appearance distorts for a moment.");
-            break;
-        case SPWPN_CHAOS:
-            mpr("It is briefly surrounded by a scintillating aura of "
-                "random colours.");
-            break;
-        case SPWPN_PENETRATION:
-        {
-            bool plural = true;
-            string hand = hand_name(true, &plural);
-            mprf("%s %s briefly %s through it before %s manages to get a "
-                 "firm grip on it.",
-                 pronoun(PRONOUN_POSSESSIVE).c_str(),
-                 hand.c_str(),
-                 // Not conj_verb: the monster isn't the subject.
-                 conjugate_verb("pass", plural).c_str(),
-                 pronoun(PRONOUN_SUBJECTIVE).c_str());
-        }
-            break;
-        case SPWPN_REAPING:
-            mpr("It is briefly surrounded by shifting shadows.");
-            break;
-        case SPWPN_ACID:
-            mprf("It begins to drip corrosive slime!");
-            break;
+    case SPWPN_FLAMING:
+        mpr("It bursts into flame!");
+        break;
+    case SPWPN_FREEZING:
+        mpr(is_range_weapon(item) ? "It is covered in frost."
+                                  : "It glows with a cold blue light!");
+        break;
+    case SPWPN_HOLY_WRATH:
+        mpr("It softly glows with a divine radiance!");
+        break;
+    case SPWPN_ELECTROCUTION:
+        mprf(MSGCH_SOUND, "You hear the crackle of electricity.");
+        break;
+    case SPWPN_VENOM:
+        mpr("It begins to drip with poison!");
+        break;
+    case SPWPN_DRAINING:
+        mpr("You sense an unholy aura.");
+        break;
+    case SPWPN_DISTORTION:
+        mpr("Its appearance distorts for a moment.");
+        break;
+    case SPWPN_CHAOS:
+        mpr("It is briefly surrounded by a scintillating aura of "
+            "random colours.");
+        break;
+    case SPWPN_PENETRATION:
+    {
+        bool plural = true;
+        string hand = hand_name(true, &plural);
+        mprf("%s %s briefly %s through it before %s manages to get a "
+             "firm grip on it.",
+             pronoun(PRONOUN_POSSESSIVE).c_str(),
+             hand.c_str(),
+             // Not conj_verb: the monster isn't the subject.
+             conjugate_verb("pass", plural).c_str(),
+             pronoun(PRONOUN_SUBJECTIVE).c_str());
+    }
+        break;
+    case SPWPN_REAPING:
+        mpr("It is briefly surrounded by shifting shadows.");
+        break;
+    case SPWPN_ACID:
+        mprf("It begins to drip corrosive slime!");
+        break;
 
-        default:
-            // A ranged weapon without special message is known to be unbranded.
-            if (brand != SPWPN_NORMAL || !is_range_weapon(item))
-                message_given = false;
-        }
+    default:
+        // A ranged weapon without special message is known to be unbranded.
+        if (brand != SPWPN_NORMAL || !is_range_weapon(item))
+            message_given = false;
+    }
 
-        if (message_given)
-        {
-            if (is_artefact(item) && !is_unrandom_artefact(item))
-                artefact_learn_prop(item, ARTP_BRAND);
-            else
-                set_ident_flags(item, ISFLAG_KNOW_TYPE);
-        }
+    if (message_given)
+    {
+        if (is_artefact(item) && !is_unrandom_artefact(item))
+            artefact_learn_prop(item, ARTP_BRAND);
+        else
+            set_ident_flags(item, ISFLAG_KNOW_TYPE);
     }
 }
 
@@ -888,43 +900,37 @@ int monster::armour_bonus(const item_def &item, bool calc_unid) const
     return armour_ac + armour_plus;
 }
 
-void monster::equip_armour(item_def &item, bool msg)
+void monster::equip_armour_message(item_def &item)
 {
-    if (msg)
-    {
-        const string str = " wears " +
-                           item.name(DESC_A) + ".";
-        simple_monster_message(*this, str.c_str());
-    }
+    const string str = " wears " +
+                       item.name(DESC_A) + ".";
+    simple_monster_message(*this, str.c_str());
 }
 
-void monster::equip_jewellery(item_def &item, bool msg)
+void monster::equip_jewellery_message(item_def &item)
 {
     ASSERT(item.base_type == OBJ_JEWELLERY);
 
-    if (msg)
-    {
-        const string str = " puts on " +
-                           item.name(DESC_A) + ".";
-        simple_monster_message(*this, str.c_str());
-    }
+    const string str = " puts on " +
+                       item.name(DESC_A) + ".";
+    simple_monster_message(*this, str.c_str());
 }
 
-void monster::equip(item_def &item, bool msg)
+void monster::equip_message(item_def &item)
 {
     switch (item.base_type)
     {
     case OBJ_WEAPONS:
     case OBJ_STAVES:
-        equip_weapon(item, msg);
+        equip_weapon_message(item);
         break;
 
     case OBJ_ARMOUR:
-        equip_armour(item, msg);
+        equip_armour_message(item);
         break;
 
     case OBJ_JEWELLERY:
-        equip_jewellery(item, msg);
+        equip_jewellery_message(item);
     break;
 
     default:
@@ -1150,7 +1156,8 @@ bool monster::pickup(item_def &item, mon_inv_type slot, bool msg)
             merge_item_stacks(item, dest);
             inc_mitm_item_quantity(inv[slot], item.quantity);
             destroy_item(item.index());
-            equip(item, msg);
+            if (msg)
+                equip_message(item);
             lose_pickup_energy();
             return true;
         }
@@ -1174,8 +1181,10 @@ bool monster::pickup(item_def &item, mon_inv_type slot, bool msg)
     item.set_holding_monster(*this);
 
     if (msg)
+    {
         pickup_message(item);
-    equip(item, msg);
+        equip_message(item);
+    }
     lose_pickup_energy();
     return true;
 }
@@ -1200,7 +1209,6 @@ bool monster::drop_item(mon_inv_type eslot, bool msg)
             return false;
         was_unequipped = true;
     }
-    const bool was_wand = pitem.base_type == OBJ_WANDS;
 
     if (pitem.flags & ISFLAG_SUMMONED)
     {
@@ -1228,15 +1236,12 @@ bool monster::drop_item(mon_inv_type eslot, bool msg)
         if (!move_item_to_grid(&item_index, pos(), swimming()))
         {
             // Re-equip item if we somehow failed to drop it.
-            if (was_unequipped)
-                equip(pitem, msg);
+            if (was_unequipped && msg)
+                equip_message(pitem);
 
             return false;
         }
     }
-
-    if (props.exists("wand_known") && msg && was_wand)
-        props.erase("wand_known");
 
     inv[eslot] = NON_ITEM;
     return true;
@@ -2009,11 +2014,7 @@ bool monster::pickup_wand(item_def &item, bool msg, bool force)
     }
 
     if (pickup(item, MSLOT_WAND, msg))
-    {
-        if (msg)
-            props["wand_known"] = item_type_known(item);
         return true;
-    }
     else
         return false;
 }
@@ -2142,8 +2143,8 @@ void monster::swap_weapons(maybe_bool maybe_msg)
 
     swap(inv[MSLOT_WEAPON], inv[MSLOT_ALT_WEAPON]);
 
-    if (alt)
-        equip(*alt, msg);
+    if (alt && msg)
+        equip_message(*alt);
 
     // Monsters can swap weapons really fast. :-)
     if ((weap || alt) && speed_increment >= 2)
@@ -4361,6 +4362,10 @@ bool monster::corrode_equipment(const char* corrosion_source, int degree)
 void monster::splash_with_acid(const actor* evildoer, int /*acid_strength*/,
                                bool /*allow_corrosion*/, const char* /*hurt_msg*/)
 {
+    // Splashing with acid shouldn't do anything to immune targets
+    if (res_acid() == 3)
+        return;
+
     const int dam = roll_dice(2, 4);
     const int post_res_dam = resist_adjust_damage(this, BEAM_ACID, dam);
 
@@ -4666,8 +4671,6 @@ bool monster::is_trap_safe(const coord_def& where, bool just_check) const
         return true;
     const trap_def& trap = *ptrap;
 
-    const bool player_knows_trap = (trap.is_known(&you));
-
     // Known shafts are safe. Unknown ones are unknown.
     if (trap.type == TRAP_SHAFT)
         return true;
@@ -4677,8 +4680,9 @@ bool monster::is_trap_safe(const coord_def& where, bool just_check) const
         return true;
 #endif
 
-    // No friendly monsters will ever enter a Zot trap you know.
-    if (player_knows_trap && friendly() && trap.type == TRAP_ZOT)
+    // No friendly monsters will ever enter a trap that harms the player
+    // when triggered.
+    if (friendly() && trap.is_bad_for_player())
         return false;
 
     // Dumb monsters don't care at all.
@@ -4733,7 +4737,7 @@ bool monster::is_trap_safe(const coord_def& where, bool just_check) const
     // Friendlies will try not to be parted from you.
     if (intelligent_ally(*this) && (trap.type == TRAP_TELEPORT
                                    || trap.type == TRAP_TELEPORT_PERMANENT)
-        && player_knows_trap && can_see(you))
+        && can_see(you))
     {
         return false;
     }
@@ -5736,6 +5740,7 @@ void monster::lose_energy(energy_use_type et, int div, int mult)
         energy_loss += 4;
 
     // Randomize interval between servitor spellcasts
+    // TODO: is there a more transparent way to implement this than energy?
     if ((et == EUT_SPELL && type == MONS_SPELLFORGED_SERVITOR))
         energy_loss += random2(16);
 
@@ -6423,7 +6428,8 @@ item_def* monster::take_item(int steal_what, mon_inv_type mslot,
     inv[mslot] = index;
     new_item.set_holding_monster(*this);
 
-    equip(new_item, true);
+    if (mslot != MSLOT_ALT_WEAPON || mons_wields_two_weapons(*this))
+        equip_message(new_item);
 
     // Item is gone from player's inventory.
     dec_inv_item_quantity(steal_what, new_item.quantity);
@@ -6635,7 +6641,7 @@ int monster::spell_hd(spell_type spell) const
 }
 
 /**
- * For pandemonium lords & monsters with random spellbooks, track which spells
+ * For monsters with random spellbooks, track which spells
  * the player has seen this monster cast.
  *
  * @param spell     The spell the player just saw the monster cast.
@@ -6643,7 +6649,7 @@ int monster::spell_hd(spell_type spell) const
 void monster::note_spell_cast(spell_type spell)
 {
     const monster_info mi(this);
-    if (type != MONS_PANDEMONIUM_LORD && get_spellbooks(mi).size() <= 1)
+    if (get_spellbooks(mi).size() <= 1)
         return;
 
     for (int old_spell : props[SEEN_SPELLS_KEY].get_vector())
@@ -6655,44 +6661,36 @@ void monster::note_spell_cast(spell_type spell)
     props[SEEN_SPELLS_KEY].get_vector().push_back(spell);
 }
 
-void monster::align_avatars(bool force_friendly)
-{
-    mon_attitude_type new_att = (force_friendly ? ATT_FRIENDLY
-                                   : attitude);
-
-    // Neutral monsters don't need avatars, and in same cases would attack their
-    // own avatars if they had them.
-    if (new_att == ATT_NEUTRAL || new_att == ATT_STRICT_NEUTRAL
-        || new_att == ATT_GOOD_NEUTRAL)
-    {
-        remove_avatars();
-        return;
-    }
-
-    monster* avatar = find_spectral_weapon(this);
-    if (avatar)
-    {
-        avatar->attitude = new_att;
-        reset_spectral_weapon(avatar);
-    }
-
-    avatar = find_battlesphere(this);
-    if (avatar)
-    {
-        avatar->attitude = new_att;
-        reset_battlesphere(avatar);
-    }
-}
-
-void monster::remove_avatars()
+/**
+ * Remove this monsters summon's. Any monsters summoned by this monster will be
+ * abjured and any spectral weapon or battlesphere avatars they have will be
+ * ended.
+ *
+ * @param check_attitude If true, only remove summons/avatars whose attitude
+ *                       differs from the the monster.
+ */
+void monster::remove_summons(bool check_attitude)
 {
     monster* avatar = find_spectral_weapon(this);
-    if (avatar)
+    if (avatar && (!check_attitude || attitude != avatar->attitude))
         end_spectral_weapon(avatar, false, false);
 
     avatar = find_battlesphere(this);
-    if (avatar)
+    if (avatar && (!check_attitude || attitude != avatar->attitude))
         end_battlesphere(avatar, false);
+
+    for (monster_iterator mi; mi; ++mi)
+    {
+        int sumtype = 0;
+
+        if ((!check_attitude || attitude != mi->attitude)
+            && mi->summoner == mid
+            && (mi->is_summoned(nullptr, &sumtype)
+                || sumtype == MON_SUMM_CLONE))
+        {
+            mi->del_ench(ENCH_ABJ);
+        }
+    }
 }
 
 /**

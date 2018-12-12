@@ -41,6 +41,7 @@
 #include "stringutil.h"
 #include "terrain.h"
 #include "unwind.h"
+#include "ui.h"
 
 static equipment_type _acquirement_armour_slot(bool);
 static armour_type _acquirement_armour_for_slot(equipment_type, bool);
@@ -89,8 +90,8 @@ static int _acquirement_armour_subtype(bool divine, int & /*quantity*/)
  *                      the filter returns true may be chosen.
  * @return              A random element from the given list.
  */
-template<class M, class Pred>
-M filtered_vector_select(vector<pair<M, int>> weights, Pred filter)
+template<class M>
+M filtered_vector_select(vector<pair<M, int>> weights, function<bool(M)> filter)
 {
     for (auto &weight : weights)
     {
@@ -139,9 +140,10 @@ static equipment_type _acquirement_armour_slot(bool divine)
         { EQ_BOOTS,         1 },
     };
 
-    return filtered_vector_select(weights, [] (equipment_type etyp) {
-        return you_can_wear(etyp); // evading template nonsense
-    });
+    return filtered_vector_select<equipment_type>(weights,
+        [] (equipment_type etyp) {
+            return you_can_wear(etyp); // evading template nonsense
+        });
 }
 
 
@@ -218,7 +220,7 @@ static armour_type _acquirement_shield_type()
                              + _skill_rdiv(SK_SHIELDS, scale / 2) },
     };
 
-    return filtered_vector_select(weights, [] (armour_type shtyp) {
+    return filtered_vector_select<armour_type>(weights, [] (armour_type shtyp) {
         return check_armour_size(shtyp,  you.body_size(PSIZE_TORSO, true));
     });
 }
@@ -347,7 +349,7 @@ static armour_type _useless_armour_type()
                 { ARM_LARGE_SHIELD,  1 },
             };
 
-            return filtered_vector_select(shield_weights,
+            return filtered_vector_select<armour_type>(shield_weights,
                                           [] (armour_type shtyp) {
                 return !check_armour_size(shtyp,
                                           you.body_size(PSIZE_TORSO, true));
@@ -1525,6 +1527,10 @@ bool acquirement(object_class_type class_wanted, int agent,
 
     *item_index = NON_ITEM;
 
+#ifdef USE_TILE_WEB
+    ui::cutoff_point ui_cutoff_point;
+#endif
+
     while (class_wanted == OBJ_RANDOM)
     {
         ASSERT(!quiet);
@@ -1549,8 +1555,8 @@ bool acquirement(object_class_type class_wanted, int agent,
             }
         }
         mprf(MSGCH_PROMPT, "What kind of item would you like to acquire?"
-                "<lightgrey> [<w>\\</w>] known items [<w>$</w>] shopping list"
-                "</lightgrey>");
+                "<lightgrey> [<w>\\</w>] known items %s</lightgrey>",
+                shopping_list.empty() ? "" : "[<w>$</w>] shopping list");
 
         const int keyin = toalower(get_ch());
         if (keyin >= 'a' && keyin < 'a' + (int)ARRAYSZ(acq_classes))

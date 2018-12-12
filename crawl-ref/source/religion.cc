@@ -1739,7 +1739,7 @@ static string _item_ego_name(object_class_type base_type, int brand)
         // reads better than 'flaming'
         const bool terse = brand == SPWPN_FLAMING
                            || brand == SPWPN_ANTIMAGIC;
-        return brand_type_name(brand, terse);
+        return brand_type_name((brand_type) brand, terse);
     }
     case OBJ_ARMOUR:
         // XXX: hack
@@ -2864,6 +2864,7 @@ void excommunication(bool voluntary, god_type new_god)
         if (you.transfer_skill_points > 0)
             ashenzari_end_transfer(false, true);
         you.duration[DUR_SCRYING] = 0;
+        you.xray_vision = false;
         you.exp_docked[old_god] = exp_needed(min<int>(you.max_level, 27) + 1)
                                   - exp_needed(min<int>(you.max_level, 27));
         you.exp_docked_total[old_god] = you.exp_docked[old_god];

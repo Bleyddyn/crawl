@@ -1818,7 +1818,7 @@ void yred_make_enslaved_soul(monster* mon, bool force_hostile)
     }
     monster_drop_things(mon, false, [](const item_def& item)
                                     { return is_holy_item(item); });
-    mon->remove_avatars();
+    mon->remove_summons();
 
     const monster orig = *mon;
 
@@ -3601,8 +3601,8 @@ void cheibriados_temporal_distortion()
 {
     const coord_def old_pos = you.pos();
 
-    you.moveto(coord_def(0, 0));
     you.duration[DUR_TIME_STEP] = 3 + random2(3);
+    you.moveto(coord_def(0, 0));
 
     _run_time_step();
 
@@ -3630,8 +3630,8 @@ void cheibriados_time_step(int pow) // pow is the number of turns to skip
 
     mpr("You step out of the flow of time.");
     flash_view(UA_PLAYER, LIGHTBLUE);
-    you.moveto(coord_def(0, 0));
     you.duration[DUR_TIME_STEP] = pow;
+    you.moveto(coord_def(0, 0));
 
     you.time_taken = 10;
     _run_time_step();
@@ -3874,8 +3874,7 @@ bool dithmenos_shadow_step()
         if (!zot_trap_prompted)
         {
             trap_def* trap = trap_at(site);
-            if (trap && env.grid(site) != DNGN_UNDISCOVERED_TRAP
-                && trap->type == TRAP_ZOT)
+            if (trap && trap->type == TRAP_ZOT)
             {
                 if (!check_moveto_trap(site, "shadow step",
                                        &trap_prompted))
@@ -4945,21 +4944,22 @@ bool qazlal_disaster_area()
 
     mprf(MSGCH_GOD, "Nature churns violently around you!");
 
+    // TODO: should count get a cap proportional to targets.size()?
     int count = max(1, min((int)targets.size(),
                             max(you.skill_rdiv(SK_INVOCATIONS, 1, 2),
                                 random2avg(you.skill(SK_INVOCATIONS, 2), 2))));
-    vector<coord_def> victims;
+
     for (int i = 0; i < count; i++)
     {
         if (targets.size() == 0)
             break;
         int which = choose_random_weighted(weights.begin(), weights.end());
-        unsigned int j = 0;
-        for (; j < victims.size(); j++)
-            if (adjacent(targets[which], victims[j]))
-                break;
-        if (j == victims.size())
-            qazlal_upheaval(targets[which], true);
+        // Downweight adjacent potential targets (but don't rule them out
+        // entirely).
+        for (unsigned int j = 0; j < targets.size(); j++)
+            if (adjacent(targets[which], targets[j]))
+                weights[j] = max(weights[j] / 2, 1);
+        qazlal_upheaval(targets[which], true);
         targets.erase(targets.begin() + which);
         weights.erase(weights.begin() + which);
     }
@@ -5086,6 +5086,10 @@ static mutation_type _random_valid_sacrifice(const vector<mutation_type> &muts)
         {
             continue;
         }
+
+        // No potion heal doesn't affect mummies since they can't quaff potions
+        if (mut == MUT_NO_POTION_HEAL && you.species == SP_MUMMY)
+            continue;
 
         // The Grunt Algorithm
         // (choose a random element from a set of unknown size without building
@@ -5817,6 +5821,9 @@ static int _ru_get_sac_piety_gain(ability_type sac)
 
 string ru_sacrifice_description(ability_type sac)
 {
+    if (!you_worship(GOD_RU))
+        return "";
+
     const int piety_gain = _ru_get_sac_piety_gain(sac);
     return make_stringf("This is %s sacrifice. Piety after sacrifice: %s",
                         _describe_sacrifice_piety_gain(piety_gain),
@@ -7218,7 +7225,7 @@ bool wu_jian_do_wall_jump(coord_def targ, bool ability)
     return true;
 }
 
-bool wu_jian_wall_jump_ability()
+spret_type wu_jian_wall_jump_ability()
 {
     // This needs to be kept in sync with direct walljumping via movement.
     // TODO: Refactor to call the same code.
@@ -7229,11 +7236,11 @@ bool wu_jian_wall_jump_ability()
         crawl_state.cant_cmd_repeat("You can't repeat a wall jump.");
         crawl_state.cancel_cmd_again();
         crawl_state.cancel_cmd_repeat();
-        return false;
+        return SPRET_ABORT;
     }
 
     if (cancel_barbed_move())
-        return false;
+        return SPRET_ABORT;
 
     if (you.digging)
     {
@@ -7254,14 +7261,24 @@ bool wu_jian_wall_jump_ability()
     if (!has_targets)
     {
         mpr("There is nothing to wall jump against here.");
-        return false;
+        return SPRET_ABORT;
     }
 
     if (you.is_nervous())
     {
         mpr("You are too terrified to wall jump!");
-        return false;
+        return SPRET_ABORT;
     }
+
+    if (you.attribute[ATTR_HELD])
+    {
+        mprf("You cannot wall jump while caught in a %s.",
+             get_trapping_net(you.pos()) == NON_ITEM ? "web" : "net");
+        return SPRET_ABORT;
+    }
+
+    if (!you.attempt_escape())
+        return SPRET_FAIL;
 
     // query for location:
     dist beam;
@@ -7288,23 +7305,23 @@ bool wu_jian_wall_jump_ability()
         {
             clear_messages();
             mpr("Cancelling wall jump due to HUP.");
-            return false;
+            return SPRET_ABORT;
         }
 
         if (!beam.isValid || beam.target == you.pos())
-            return false; // early return
+            return SPRET_ABORT; // early return
 
         if (wu_jian_can_wall_jump(beam.target, wj_error))
             break;
     }
 
     if (!wu_jian_do_wall_jump(beam.target, true))
-        return false;
+        return SPRET_ABORT;
 
     crawl_state.cancel_cmd_again();
     crawl_state.cancel_cmd_repeat();
 
     apply_barbs_damage();
     remove_ice_armour_movement();
-    return true;
+    return SPRET_SUCCESS;
 }

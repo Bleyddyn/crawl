@@ -63,6 +63,7 @@
 #include "shout.h"
 #include "skills.h"
 #include "spl-damage.h"
+#include "spl-selfench.h"
 #include "spl-transloc.h"
 #include "spl-util.h"
 #include "sprint.h"
@@ -170,7 +171,7 @@ bool check_moveto_trap(const coord_def& p, const string &move_verb,
 {
     // If there's no trap, let's go.
     trap_def* trap = trap_at(p);
-    if (!trap || env.grid(p) == DNGN_UNDISCOVERED_TRAP)
+    if (!trap)
         return true;
 
     if (trap->type == TRAP_ZOT && !trap->is_safe() && !crawl_state.disables[DIS_CONFIRMATIONS])
@@ -355,7 +356,6 @@ bool swap_check(monster* mons, coord_def &loc, bool quiet)
 
     // prompt when swapping into known zot traps
     if (!quiet && trap_at(loc) && trap_at(loc)->type == TRAP_ZOT
-        && env.grid(loc) != DNGN_UNDISCOVERED_TRAP
         && !yes_or_no("Do you really want to swap %s into the Zot trap?",
                       mons->name(DESC_YOUR).c_str()))
     {
@@ -623,16 +623,13 @@ void update_vision_range()
 
     // Barachi have +1 base LOS.
     if (you.species == SP_BARACHI)
-    {
-        nom *= LOS_DEFAULT_RANGE + 1;
-        denom *= LOS_DEFAULT_RANGE;
-    }
+        you.normal_vision += 1;
 
     // Nightstalker gives -1/-2/-3.
     if (you.get_mutation_level(MUT_NIGHTSTALKER))
     {
-        nom *= LOS_DEFAULT_RANGE - you.get_mutation_level(MUT_NIGHTSTALKER);
-        denom *= LOS_DEFAULT_RANGE;
+        nom *= you.normal_vision - you.get_mutation_level(MUT_NIGHTSTALKER);
+        denom *= you.normal_vision;
     }
 
     // the Darkness spell.
@@ -1018,8 +1015,8 @@ int player_teleport(bool calc_unid)
 {
     ASSERT(!crawl_state.game_is_arena());
 
-    // Don't allow any form of teleportation in Sprint.
-    if (crawl_state.game_is_sprint())
+    // Don't allow any form of teleportation in Sprint or Gauntlets.
+    if (crawl_state.game_is_sprint() || player_in_branch(BRANCH_GAUNTLET))
         return 0;
 
     // Short-circuit rings of teleport to prevent spam.
@@ -2373,11 +2370,8 @@ void forget_map(bool rot)
     if (!rot)
         clear_travel_trail();
 
-    // Labyrinth and the Abyss use special rotting rules.
-    const bool rot_resist = player_in_branch(BRANCH_LABYRINTH)
-                                && you.species == SP_MINOTAUR
-                            || player_in_branch(BRANCH_ABYSS)
-                                && have_passive(passive_t::map_rot_res_abyss);
+    const bool rot_resist = player_in_branch(BRANCH_ABYSS)
+                            && have_passive(passive_t::map_rot_res_abyss);
     const double geometric_chance = 0.99;
     const int radius = (rot_resist ? 200 : 100);
 
@@ -2707,7 +2701,7 @@ static void _gain_and_note_hp_mp()
     const int old_maxmp = you.max_magic_points;
 
     // recalculate for game
-    recalc_and_scale_hp();
+    calc_hp(true, false);
     calc_mp();
 
     set_mp(old_maxmp > 0 ? old_mp * you.max_magic_points / old_maxmp
@@ -2715,7 +2709,7 @@ static void _gain_and_note_hp_mp()
 
     // Get "real" values for note-taking, i.e. ignore Berserk,
     // transformations or equipped items.
-    const int note_maxhp = get_real_hp(false, false);
+    const int note_maxhp = get_real_hp(false, true);
     const int note_maxmp = get_real_mp(false);
 
     char buf[200];
@@ -2728,19 +2722,34 @@ static void _gain_and_note_hp_mp()
 /**
  * Calculate max HP changes and scale current HP accordingly.
  */
-void recalc_and_scale_hp()
+void calc_hp(bool scale, bool set)
 {
     // Rounding must be down or Deep Dwarves would abuse certain values.
     // We can reduce errors by a factor of 100 by using partial hp we have.
+    int oldhp = you.hp;
     int old_max = you.hp_max;
-    int hp = you.hp * 100 + you.hit_points_regeneration;
-    calc_hp();
-    int new_max = you.hp_max;
-    hp = hp * new_max / old_max;
-    if (hp < 100)
-        hp = 100;
-    set_hp(min(hp / 100, you.hp_max));
-    you.hit_points_regeneration = hp % 100;
+
+    you.hp_max = get_real_hp(true, true);
+
+    if (scale) {
+        int hp = you.hp * 100 + you.hit_points_regeneration;
+        int new_max = you.hp_max;
+        hp = hp * new_max / old_max;
+        if (hp < 100)
+            hp = 100;
+        set_hp(min(hp / 100, you.hp_max));
+        you.hit_points_regeneration = hp % 100;
+    }
+    if (set)
+        you.hp = you.hp_max;
+
+    you.hp = min(you.hp, you.hp_max);
+
+    if (oldhp != you.hp || old_max != you.hp_max)
+    {
+        dprf("HP changed: %d/%d -> %d/%d", oldhp, old_max, you.hp, you.hp_max);
+        you.redraw_hit_points = true;
+    }
 }
 
 int xp_to_level_diff(int xp, int scale)
@@ -3651,16 +3660,6 @@ int player::scan_artefacts(artefact_prop_type which_property,
     return retval;
 }
 
-void calc_hp()
-{
-    int oldhp = you.hp, oldmax = you.hp_max;
-    you.hp_max = get_real_hp(true, false);
-    deflate_hp(you.hp_max, false);
-    if (oldhp != you.hp || oldmax != you.hp_max)
-        dprf("HP changed: %d/%d -> %d/%d", oldhp, oldmax, you.hp, you.hp_max);
-    you.redraw_hit_points = true;
-}
-
 void dec_hp(int hp_loss, bool fatal, const char *aux)
 {
     ASSERT(!crawl_state.game_is_arena());
@@ -3836,7 +3835,7 @@ void rot_hp(int hp_loss)
     const int initial_rot = you.hp_max_adj_temp;
     you.hp_max_adj_temp -= hp_loss;
     // don't allow more rot than you have normal mhp
-    you.hp_max_adj_temp = max(-(get_real_hp(false, true) - 1),
+    you.hp_max_adj_temp = max(-(get_real_hp(false, false) - 1),
                               you.hp_max_adj_temp);
     if (initial_rot == you.hp_max_adj_temp)
         return;
@@ -3899,20 +3898,6 @@ void dec_max_hp(int hp_loss)
     you.redraw_hit_points = true;
 }
 
-// Use of floor: false = hp max, true = hp min. {dlb}
-void deflate_hp(int new_level, bool floor)
-{
-    ASSERT(!crawl_state.game_is_arena());
-
-    if (floor && you.hp < new_level)
-        you.hp = new_level;
-    else if (!floor && you.hp > new_level)
-        you.hp = new_level;
-
-    // Must remain outside conditional, given code usage. {dlb}
-    you.redraw_hit_points = true;
-}
-
 void set_hp(int new_amount)
 {
     ASSERT(!crawl_state.game_is_arena());
@@ -3941,9 +3926,13 @@ void set_mp(int new_amount)
     you.redraw_magic_points = true;
 }
 
-// If trans is true, being berserk and/or transformed is taken into account
-// here. Else, the base hp is calculated. If rotted is true, calculate the
-// real max hp you'd have if the rotting was cured.
+/**
+ * Get the player's max HP
+ * @param trans          Whether to include transformations, berserk,
+ *                       items etc.
+ * @param rotted         Whether to include the effects of rotting.
+ * @return               The player's calculated max HP.
+ */
 int get_real_hp(bool trans, bool rotted)
 {
     int hitp;
@@ -3971,7 +3960,7 @@ int get_real_hp(bool trans, bool rotted)
 
     hitp /= 100;
 
-    if (!rotted)
+    if (rotted)
         hitp += you.hp_max_adj_temp;
 
     if (trans)
@@ -3981,13 +3970,17 @@ int get_real_hp(bool trans, bool rotted)
     if (trans && you.berserk())
         hitp = hitp * 3 / 2;
 
-    if (trans) // Some transformations give you extra hp.
+    // Some transformations give you extra hp.
+    if (trans)
         hitp = hitp * form_hp_mod() / 10;
 
 #if TAG_MAJOR_VERSION == 34
     if (trans && player_equip_unrand(UNRAND_ETERNAL_TORMENT))
         hitp = hitp * 4 / 5;
 #endif
+
+    if (trans && you.duration[DUR_DEATHS_DOOR] > 0)
+        hitp = allowed_deaths_door_hp();
 
     return max(1, hitp);
 }
@@ -4644,8 +4637,9 @@ void dec_slow_player(int delay)
 
     if (you.duration[DUR_SLOW] <= BASELINE_DELAY)
     {
-        mprf(MSGCH_DURATION, "You feel yourself speed up.");
         you.duration[DUR_SLOW] = 0;
+        if (!have_stat_zero())
+            mprf(MSGCH_DURATION, "You feel yourself speed up.");
     }
 }
 
@@ -5720,7 +5714,8 @@ void player::ablate_deflection()
  * Used as the base for adjusted armour penalty calculations, as well as for
  * stealth penalty calculations.
  *
- * @return  The player's body armour's PARM_EVASION, if any.
+ * @return  The player's body armour's PARM_EVASION, if any, taking into account
+ *          the sturdy frame mutation that reduces encumbrance.
  */
 int player::unadjusted_body_armour_penalty() const
 {
@@ -5728,7 +5723,9 @@ int player::unadjusted_body_armour_penalty() const
     if (!body_armour)
         return 0;
 
-    return -property(*body_armour, PARM_EVASION) / 10;
+    // PARM_EVASION is always less than or equal to 0
+    return max(0, -property(*body_armour, PARM_EVASION) / 10
+                  - get_mutation_level(MUT_STURDY_FRAME) * 2);
 }
 
 /**
@@ -5740,9 +5737,7 @@ int player::unadjusted_body_armour_penalty() const
  */
 int player::adjusted_body_armour_penalty(int scale) const
 {
-    const int base_ev_penalty =
-        max(0, unadjusted_body_armour_penalty()
-                   - get_mutation_level(MUT_STURDY_FRAME) * 2);
+    const int base_ev_penalty = unadjusted_body_armour_penalty();
 
     // New formula for effect of str on aevp: (2/5) * evp^2 / (str+3)
     return 2 * base_ev_penalty * base_ev_penalty * (450 - skill(SK_ARMOUR, 10))
@@ -6358,8 +6353,13 @@ int player_res_magic(bool calc_unid, bool temp)
  */
 string player::no_tele_reason(bool calc_unid, bool blinking) const
 {
-    if (crawl_state.game_is_sprint() && !blinking)
-        return "Long-range teleportation is disallowed in Dungeon Sprint.";
+    if (!blinking)
+    {
+        if (crawl_state.game_is_sprint())
+            return "Long-range teleportation is disallowed in Dungeon Sprint.";
+        else if (player_in_branch(BRANCH_GAUNTLET))
+            return "Long-range teleportation does not work in a Gauntlet.";
+    }
 
     if (stasis())
         return "Your stasis prevents you from teleporting.";
@@ -6730,6 +6730,9 @@ void player::paralyse(actor *who, int str, string source)
                                                : source;
     }
 
+    if (asleep())
+        you.awaken();
+
     mpr("You suddenly lose the ability to move!");
 
     paralysis = min(str, 13) * BASELINE_DELAY;
@@ -6753,6 +6756,10 @@ void player::petrify(actor *who, bool force)
         mpr("Your divine stamina protects you from petrification!");
         return;
     }
+
+    // Petrification always wakes you up
+    if (asleep())
+        you.awaken();
 
     if (petrifying())
     {
@@ -7254,6 +7261,14 @@ void player::put_to_sleep(actor*, int power, bool hibernate)
         return;
     }
 
+    if (duration[DUR_PARALYSIS]
+        || duration[DUR_PETRIFIED]
+        || duration[DUR_PETRIFYING])
+    {
+        mpr("You can't fall asleep in your current state!");
+        return;
+    }
+
     mpr("You fall asleep.");
 
     stop_directly_constricting_all(false);
@@ -7295,17 +7310,14 @@ int player::beam_resists(bolt &beam, int hurted, bool doEffects, string source)
 // different effect from the player invokable ability.
 bool player::do_shaft()
 {
-    if (!is_valid_shaft_level())
-        return false;
-
-    // Handle instances of do_shaft() being invoked magically when
-    // the player isn't standing over a shaft.
-    if (get_trap_type(pos()) != TRAP_SHAFT
-        && !feat_is_shaftable(grd(pos())))
+    if (!is_valid_shaft_level()
+        || !feat_is_shaftable(grd(pos()))
+        || duration[DUR_SHAFT_IMMUNITY])
     {
         return false;
     }
 
+    duration[DUR_SHAFT_IMMUNITY] = 1;
     down_stairs(DNGN_TRAP_SHAFT);
 
     return true;
@@ -8161,9 +8173,8 @@ void player_end_berserk()
 
     slow_player(dur);
 
-    // 1KB: No berserk healing.
-    set_hp((you.hp + 1) * 2 / 3);
-    calc_hp();
+    //Un-apply Berserk's +50% Current/Max HP
+    calc_hp(true, false);
 
     learned_something_new(HINT_POSTBERSERK);
     Hints.hints_events[HINT_YOU_ENCHANTED] = hints_slow;
@@ -8206,4 +8217,45 @@ void refresh_weapon_protection()
 
     you.increase_duration(DUR_SPWPN_PROTECTION, 3 + random2(2), 5);
     you.redraw_armour_class = true;
+}
+
+// Is the player immune to a particular hex because of their
+// intrinsic properties?
+bool player::immune_to_hex(const spell_type hex) const
+{
+    switch (hex)
+    {
+    case SPELL_PARALYSIS_GAZE:
+    case SPELL_PARALYSE:
+    case SPELL_SLOW:
+        return stasis();
+    case SPELL_CONFUSE:
+    case SPELL_CONFUSION_GAZE:
+    case SPELL_MASS_CONFUSION:
+        return clarity() || you.duration[DUR_DIVINE_STAMINA] > 0;
+    case SPELL_TELEPORT_OTHER:
+    case SPELL_BLINK_OTHER:
+    case SPELL_BLINK_OTHER_CLOSE:
+        return no_tele();
+    case SPELL_MESMERISE:
+    case SPELL_AVATAR_SONG:
+    case SPELL_SIREN_SONG:
+        return clarity() || berserk();
+    case SPELL_CAUSE_FEAR:
+        return clarity() || !(holiness() & MH_NATURAL) || berserk();
+    case SPELL_PETRIFY:
+        return res_petrify();
+    case SPELL_PORKALATOR:
+        return is_lifeless_undead();
+    case SPELL_VIRULENCE:
+        return res_poison() == 3;
+    // don't include the hidden "sleep immunity" duration
+    case SPELL_SLEEP:
+    case SPELL_DREAM_DUST:
+        return !actor::can_sleep();
+    case SPELL_HIBERNATION:
+        return !can_hibernate();
+    default:
+        return false;
+    }
 }

@@ -72,11 +72,11 @@ spret_type cast_disjunction(int pow, bool fail)
         max(you.duration[DUR_DISJUNCTION] + rand,
         30 + rand));
     contaminate_player(750 + random2(500), true);
-    disjunction();
+    disjunction_spell();
     return SPRET_SUCCESS;
 }
 
-void disjunction()
+void disjunction_spell()
 {
     int steps = you.time_taken;
     invalidate_agrid(true);
@@ -553,12 +553,15 @@ static void _handle_teleport_update(bool large_change, const coord_def old_pos)
 #endif
 }
 
-static bool _teleport_player(bool wizard_tele, bool teleportitis)
+static bool _teleport_player(bool wizard_tele, bool teleportitis,
+                             string reason="")
 {
     if (!wizard_tele && !teleportitis
-        && (crawl_state.game_is_sprint() || you.no_tele(true, true))
+        && (crawl_state.game_is_sprint() || you.no_tele())
             && !player_in_branch(BRANCH_ABYSS))
     {
+        if (!reason.empty())
+            mpr(reason);
         canned_msg(MSG_STRANGE_STASIS);
         return false;
     }
@@ -579,6 +582,8 @@ static bool _teleport_player(bool wizard_tele, bool teleportitis)
         if (teleportitis)
             return false;
 
+        if (!reason.empty())
+            mpr(reason);
         abyss_teleport();
         if (you.pet_target != MHITYOU)
             you.pet_target = MHITNOT;
@@ -629,9 +634,6 @@ static bool _teleport_player(bool wizard_tele, bool teleportitis)
     }
     else
     {
-        if (player_in_branch(BRANCH_LABYRINTH) && teleportitis)
-            return false;
-
         coord_def newpos;
         int tries = 500;
         do
@@ -659,14 +661,18 @@ static bool _teleport_player(bool wizard_tele, bool teleportitis)
                 dprf("teleportitis: no monster near target");
                 return false;
             }
-            else if (you.no_tele(true, true))
+            else if (you.no_tele())
             {
+                if (!reason.empty())
+                    mpr(reason);
                 canned_msg(MSG_STRANGE_STASIS);
                 return false;
             }
             else
             {
                 interrupt_activity(AI_TELEPORT);
+                if (!reason.empty())
+                    mpr(reason);
                 mprf("You are suddenly yanked towards %s nearby monster%s!",
                      mons_near_target > 1 ? "some" : "a",
                      mons_near_target > 1 ? "s" : "");
@@ -761,9 +767,9 @@ bool you_teleport_to(const coord_def where_to, bool move_monsters)
     return true;
 }
 
-void you_teleport_now(bool wizard_tele, bool teleportitis)
+void you_teleport_now(bool wizard_tele, bool teleportitis, string reason)
 {
-    const bool randtele = _teleport_player(wizard_tele, teleportitis);
+    const bool randtele = _teleport_player(wizard_tele, teleportitis, reason);
 
     // Xom is amused by teleports that land you in a dangerous place, unless
     // the player is in the Abyss and teleported to escape from all the
@@ -1007,10 +1013,11 @@ spret_type cast_dispersal(int pow, bool fail)
     return SPRET_SUCCESS;
 }
 
-int gravitas_range(int pow, int strength)
+int gravitas_range(int pow)
 {
-    return max(0, min(LOS_RADIUS, (int)isqrt((pow/10 + 1) / strength)));
+    return pow >= 80 ? 3 : 2;
 }
+
 
 #define GRAVITY "by gravitational forces"
 
@@ -1034,6 +1041,7 @@ static void _attract_actor(const actor* agent, actor* victim,
         return;
     }
 
+    const coord_def starting_pos = victim->pos();
     for (int i = 0; i < strength; i++)
     {
         ray.advance();
@@ -1053,7 +1061,7 @@ static void _attract_actor(const actor* agent, actor* victim,
         else if (!victim->is_habitable(newpos))
             break;
         else
-            victim->move_to_pos(newpos, false);
+            victim->move_to_pos(newpos);
 
         if (auto mons = victim->as_monster())
         {
@@ -1063,6 +1071,12 @@ static void _attract_actor(const actor* agent, actor* victim,
 
         if (victim->pos() == pos)
             break;
+    }
+    if (starting_pos != victim->pos())
+    {
+        victim->apply_location_effects(starting_pos);
+        if (victim->is_monster())
+            mons_relocated(victim->as_monster());
     }
 }
 
@@ -1075,10 +1089,10 @@ bool fatal_attraction(const coord_def& pos, const actor *agent, int pow)
             continue;
 
         const int range = (pos - ai->pos()).rdist();
-        const int strength =
-            min(LOS_RADIUS, ((pow + 100) / 20) / (range*range));
-        if (strength <= 0)
+        if (range > gravitas_range(pow))
             continue;
+
+        const int strength = ((pow + 100) / 20) / (range*range);
 
         affected = true;
         _attract_actor(agent, *ai, pos, pow, strength);

@@ -2827,7 +2827,7 @@ string hints_memorise_info()
     {
         m += "\n\nA spell that isn't <darkgray>grayed out</darkgray> or "
              "<lightred>forbidden</lightred> can be "
-             "memorised right away by selecting it at at this menu.";
+             "memorised right away by selecting it at this menu.";
     }
     else
     {
@@ -2853,13 +2853,12 @@ string hints_memorise_info()
         cmd.push_back(CMD_CAST_SPELL);
     }
 
+    if (you.spell_no)
+        m += _hints_target_mode(true);
     linebreak_string(m, _get_hints_cols());
     if (!cmd.empty())
         insert_commands(m, cmd);
     text << m;
-    if (you.spell_no)
-        text << _hints_target_mode(true);
-    text << "</" << colour_to_str(channel_to_colour(MSGCH_TUTORIAL)) << ">";
 
     return text.str();
 }
