@@ -90,7 +90,7 @@ Form::Form(const form_entry &fe)
     : wiz_name(fe.wiz_name),
       duration(fe.duration),
       str_mod(fe.str_mod),
-      blocked_slots(fe.blocked_slots), hp_mod(fe.hp_mod),
+      hp_mod(fe.hp_mod),
       can_cast(fe.can_cast), spellcasting_penalty(fe.spellcasting_penalty),
       unarmed_hit_bonus(fe.unarmed_hit_bonus), uc_colour(fe.uc_colour),
       uc_attack_verbs(fe.uc_attack_verbs),
@@ -104,7 +104,7 @@ Form::Form(const form_entry &fe)
       resists(fe.resists),
       base_unarmed_damage(fe.base_unarmed_damage),
       short_name(fe.short_name), dex_mod(fe.dex_mod), size(fe.size),
-      can_fly(fe.can_fly), can_swim(fe.can_swim),
+      blocked_slots(fe.blocked_slots), can_fly(fe.can_fly), can_swim(fe.can_swim),
       flat_ac(fe.flat_ac), power_ac(fe.power_ac), xl_ac(fe.xl_ac),
       uc_brand(fe.uc_brand), uc_attack(fe.uc_attack),
       prayer_action(fe.prayer_action), equivalent_mons(fe.equivalent_mons)
@@ -135,6 +135,11 @@ bool Form::slot_available(int slot) const
     return !(blocked_slots & SLOTF(slot));
 }
 
+bool Form::slot_blocked(int slot) const
+{
+    return (blocked_slots & SLOTF(slot));
+}
+
 /**
  * Can the player wear the given item while in this form?
  *
@@ -160,6 +165,11 @@ bool Form::can_wear_item(const item_def& item) const
         return true;
 
     return slot_available(get_armour_slot(item));
+}
+
+bool Form::form_can_wear() const
+{
+    return !testbits(blocked_slots, EQF_WEAR);
 }
 
 /**
@@ -1042,6 +1052,17 @@ public:
         mon_entry = get_monster_data(genus);
         string name = mons_type_name(genus, DESC_PLAIN);
         short_name = uppercase_first(name);
+
+        mon_itemuse_type use = mons_class_itemuse(genus);
+        if( (MONUSE_STARTING_EQUIPMENT == use) || (MONUSE_WEAPONS_ARMOUR == use) )
+        {
+            blocked_slots = EQF_NONE;
+        }
+        else
+        {
+            blocked_slots = EQF_PHYSICAL;
+        }
+
         mprf("AC bonus: %d.", get_ac_bonus());
         mprf("Dex bonus: %d.", get_dex_bonus());
         mprf("Size: %d.", mon_entry->size);
@@ -1120,10 +1141,11 @@ public:
         if( MONS_SHAPESHIFTER == genus)
             return "claws";
 
-        string uc("claws");
+        string uc("fist");
         for( int i = 0; i < MAX_NUM_ATTACKS; ++i )
             switch(mon_entry->attack[i].type)
             {
+                //case AT_NONE: uc = "fist"; break;
                 case AT_HIT: uc = "hands"; break;
                 case AT_BITE: uc = "fangs"; break;
                 case AT_STING: uc = "sting"; break;
@@ -1137,6 +1159,9 @@ public:
                 case AT_TAIL_SLAP: uc = "tail"; break;
                 case AT_TRUNK_SLAP: uc = "trunk"; break;
                 default:
+                    if( AT_NONE != mon_entry->attack[i].type )
+                        mprf( "Unhandled attack type: %d", mon_entry->attack[i].type );
+                    uc = "hands";
                     break;
             }
         return uc;
@@ -1153,13 +1178,21 @@ public:
         {
             switch(mon_entry->attack[i].flavour)
             {
+                case AF_PLAIN:
+                    break;
+
                 case AF_POISON_PARALYSE:
                 case AF_POISON:
                 case AF_POISON_STRONG:
                     res = SPWPN_VENOM;
                     break;
 
+                case AF_ELEC:
+                    res = SPWPN_ELECTROCUTION;
+                    break;
+
                 default:
+                    mprf( "Unhandled attack brand: %d", mon_entry->attack[i].flavour );
                     break;
             }
         }
@@ -1236,12 +1269,15 @@ struct mon_attack_def
 
     virtual bool slot_available(int slot) const
     {
+        return Form::slot_available(slot);
+        /*
         if( MONS_SHAPESHIFTER == genus)
             return Form::slot_available(slot);
         mon_itemuse_type use = mons_class_itemuse(genus);
         if( (MONUSE_STARTING_EQUIPMENT == use) || (MONUSE_WEAPONS_ARMOUR == use) )
             return true;
         return false;
+        */
     }
 };
 
@@ -1311,7 +1347,8 @@ bool form_can_wield(transformation form)
  */
 bool form_can_wear(transformation form)
 {
-    return !testbits(get_form(form)->blocked_slots, EQF_WEAR);
+    //return !testbits(get_form(form)->blocked_slots, EQF_WEAR);
+    return get_form(form)->form_can_wear();
 }
 
 /**
@@ -1427,7 +1464,7 @@ _init_equipment_removal(transformation form)
             }
         }
 
-        if (pitem && (get_form(form)->blocked_slots & SLOTF(i)
+        if (pitem && (get_form(form)->slot_blocked(i)
                       || (i != EQ_RING_AMULET
                           && !get_form(form)->can_wear_item(*pitem))))
         {

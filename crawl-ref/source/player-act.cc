@@ -177,7 +177,7 @@ bool player::is_habitable_feat(dungeon_feature_type actual_grid) const
 
 size_type player::body_size(size_part_type psize, bool base) const
 {
-    if (base)
+    if (base && !(species == SP_SHAPESHIFTER))
         return species_size(species, psize);
     else
     {
@@ -219,7 +219,6 @@ brand_type player::damage_brand(int)
     }
 
     // unarmed
-
     return get_form()->get_uc_brand();
 }
 

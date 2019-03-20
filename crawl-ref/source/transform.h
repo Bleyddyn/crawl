@@ -76,8 +76,10 @@ protected:
     Form(transformation tran);
 public:
     virtual bool slot_available(int slot) const;
+    virtual bool slot_blocked(int slot) const;
     bool can_wield() const { return slot_available(EQ_WEAPON); }
     virtual bool can_wear_item(const item_def& item) const;
+    virtual bool form_can_wear() const;
 
     virtual int get_duration(int pow) const;
     virtual bool can_expire() const;
@@ -164,11 +166,6 @@ public:
     /// flat str bonus
     const int str_mod;
 
-    /// Equipment types unusable in this form.
-    /** A bitfield representing a union of (1 << equipment_type) values for
-     * equipment types that are unusable in this form.
-     */
-    const int blocked_slots;
     /// 10 * multiplier to hp/mhp (that is, 10 is base, 15 is 1.5x, etc)
     const int hp_mod;
 
@@ -226,6 +223,12 @@ protected:
     const int dex_mod;
     /// size of the form
     const size_type size;
+
+    /// Equipment types unusable in this form.
+    /** A bitfield representing a union of (1 << equipment_type) values for
+     * equipment types that are unusable in this form.
+     */
+    int blocked_slots;
 
 private:
     bool all_blocked(int slotflags) const;
