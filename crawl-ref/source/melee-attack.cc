@@ -37,6 +37,7 @@
 #include "mon-behv.h"
 #include "mon-poly.h"
 #include "mon-tentacle.h"
+#include "prompt.h"
 #include "religion.h"
 #include "shout.h"
 #include "spl-damage.h"
@@ -109,7 +110,10 @@ bool melee_attack::handle_phase_attempted()
     if (attacker->is_player() && defender && defender->is_monster())
     {
         // Unrands with secondary effects that can harm nearby friendlies.
-        if (weapon && is_unrandom_artefact(*weapon, UNRAND_DEVASTATOR))
+        // Don't prompt for confirmation (and leak information about the
+        // monster's position) if the player can't see the monster.
+        if (weapon && is_unrandom_artefact(*weapon, UNRAND_DEVASTATOR)
+            && you.can_see(*defender))
         {
 
             targeter_smite hitfunc(attacker, 1, 1, 1, false);
@@ -125,18 +129,40 @@ bool melee_attack::handle_phase_attempted()
         else if (weapon &&
                 (is_unrandom_artefact(*weapon, UNRAND_SINGING_SWORD)
                  || is_unrandom_artefact(*weapon, UNRAND_VARIABILITY)
-                 || is_unrandom_artefact(*weapon, UNRAND_SPELLBINDER)))
+                 || is_unrandom_artefact(*weapon, UNRAND_SPELLBINDER))
+                 && you.can_see(*defender))
         {
             targeter_los hitfunc(&you, LOS_NO_TRANS);
 
-            if (stop_attack_prompt(hitfunc, "attack", nullptr, nullptr,
-                                   defender->as_monster()))
+            if (stop_attack_prompt(hitfunc, "attack",
+                                   [](const actor *act)
+                                   {
+                                       return !(you.deity() == GOD_FEDHAS
+                                       && fedhas_protects(*act->as_monster()));
+                                   }, nullptr, defender->as_monster()))
             {
                 cancel_attack = true;
                 return false;
             }
         }
-        else if (weapon && is_unrandom_artefact(*weapon, UNRAND_ARC_BLADE))
+        else if (weapon && is_unrandom_artefact(*weapon, UNRAND_TORMENT)
+                 && you.can_see(*defender))
+        {
+            targeter_los hitfunc(&you, LOS_NO_TRANS);
+
+            if (stop_attack_prompt(hitfunc, "attack",
+                                   [] (const actor *m)
+                                   {
+                                       return !m->res_torment();
+                                   },
+                                   nullptr, defender->as_monster()))
+            {
+                cancel_attack = true;
+                return false;
+            }
+        }
+        else if (weapon && is_unrandom_artefact(*weapon, UNRAND_ARC_BLADE)
+                 && you.can_see(*defender))
         {
             vector<const actor *> exclude;
             if (!safe_discharge(defender->pos(), exclude))
@@ -2698,11 +2724,7 @@ void melee_attack::mons_apply_attack_flavour()
 
         // deliberate fall-through
     case AF_VAMPIRIC:
-        if (!(defender->holiness() & MH_NATURAL))
-            break;
-
-        // Disallow draining of summoned monsters.
-        if (defender->is_summoned())
+        if (!actor_is_susceptible_to_vampirism(*defender))
             break;
 
         if (defender->stat_hp() < defender->stat_maxhp())
@@ -3610,7 +3632,8 @@ bool melee_attack::_player_vampire_draws_blood(const monster* mon, const int dam
     // Regain hp.
     if (you.hp < you.hp_max)
     {
-        int heal = 2 + random2(damage) + random2(damage);
+        int heal = 2 + random2(damage);
+        heal += random2(damage);
         if (heal > you.experience_level)
             heal = you.experience_level;
 
@@ -3632,7 +3655,6 @@ bool melee_attack::_vamp_wants_blood_from_monster(const monster* mon)
 {
     return you.species == SP_VAMPIRE
            && you.hunger_state < HS_SATIATED
-           && !mon->is_summoned()
-           && mons_has_blood(mon->type)
-           && !testbits(mon->flags, MF_SPECTRALISED);
+           && actor_is_susceptible_to_vampirism(*mon)
+           && mons_has_blood(mon->type);
 }

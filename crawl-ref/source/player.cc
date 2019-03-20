@@ -20,6 +20,7 @@
 #include "act-iter.h"
 #include "areas.h"
 #include "art-enum.h"
+#include "attack.h"
 #include "bloodspatter.h"
 #include "branch.h"
 #include "chardump.h"
@@ -33,6 +34,7 @@
 #include "env.h"
 #include "errors.h"
 #include "exercise.h"
+#include "files.h"
 #include "food.h"
 #include "god-abil.h"
 #include "god-conduct.h"
@@ -62,6 +64,7 @@
 #include "religion.h"
 #include "shout.h"
 #include "skills.h"
+#include "species.h" // random_starting_species
 #include "spl-damage.h"
 #include "spl-selfench.h"
 #include "spl-transloc.h"
@@ -75,7 +78,7 @@
 #include "stringutil.h"
 #include "terrain.h"
 #ifdef USE_TILE
- #include "tiledef-feat.h"
+ #include "tilepick.h"
  #include "tileview.h"
 #endif
 #include "transform.h"
@@ -126,7 +129,8 @@ bool check_moveto_cloud(const coord_def& p, const string &move_verb,
 {
     if (you.confused())
         return true;
-    const cloud_type ctype = cloud_type_at(p);
+
+    const cloud_type ctype = env.map_knowledge(p).cloud();
     // Don't prompt if already in a cloud of the same type.
     if (is_damaging_cloud(ctype, true, cloud_is_yours_at(p))
         && ctype != cloud_type_at(you.pos())
@@ -169,6 +173,11 @@ bool check_moveto_cloud(const coord_def& p, const string &move_verb,
 bool check_moveto_trap(const coord_def& p, const string &move_verb,
                        bool *prompted)
 {
+    // Boldly go into the unknown (for shadow step and other ranged move
+    // prompts)
+    if (env.map_knowledge(p).trap() == TRAP_UNASSIGNED)
+        return true;
+
     // If there's no trap, let's go.
     trap_def* trap = trap_at(p);
     if (!trap)
@@ -228,6 +237,11 @@ static bool _check_moveto_dangerous(const coord_def& p, const string& msg)
 bool check_moveto_terrain(const coord_def& p, const string &move_verb,
                           const string &msg, bool *prompted)
 {
+    // Boldly go into the unknown (for shadow step and other ranged move
+    // prompts)
+    if (!env.map_knowledge(p).known())
+        return true;
+
     if (!_check_moveto_dangerous(p, msg))
         return false;
     if (!need_expiration_warning() && need_expiration_warning(p)
@@ -1486,17 +1500,14 @@ bool player::res_corr(bool calc_unid, bool items) const
     if (have_passive(passive_t::resist_corrosion))
         return true;
 
+    if (get_mutation_level(MUT_ACID_RESISTANCE))
+        return true;
+
     if (get_form()->res_acid())
         return true;
 
     if (you.duration[DUR_RESISTANCE])
         return true;
-
-    if ((form_keeps_mutations() || form == transformation::dragon)
-        && species == SP_YELLOW_DRACONIAN)
-    {
-        return true;
-    }
 
     // TODO: why doesn't this use the usual form suppression mechanism?
     if (form_keeps_mutations()
@@ -2076,8 +2087,11 @@ void update_acrobat_status()
     if (you.props[ACROBAT_AMULET_ACTIVE].get_int() != 1)
         return;
 
-    you.duration[DUR_ACROBAT] = you.time_taken;
-    you.props[LAST_ACTION_WAS_MOVE_OR_REST_KEY] = true;
+    // Acrobat duration goes slightly into the next turn, giving the
+    // player visual feedback of the EV bonus recieved.
+    // This is assignment and not increment as acrobat duration depends
+    // on player action.
+    you.duration[DUR_ACROBAT] = you.time_taken+1;
     you.redraw_evasion = true;
 }
 
@@ -2146,9 +2160,9 @@ static int _player_evasion_bonuses()
     if (you.get_mutation_level(MUT_SLOW_REFLEXES))
         evbonus -= you.get_mutation_level(MUT_SLOW_REFLEXES) * 5;
 
-    // If you have an active amulet of the acrobat and just moved, get massive
+    // If you have an active amulet of the acrobat and just moved or waited, get massive
     // EV bonus.
-    if (acrobat_boost_visible())
+    if (acrobat_boost_active())
         evbonus += 15;
 
     return evbonus;
@@ -2248,11 +2262,8 @@ static int _player_evasion(ev_ignore_type evit)
 
     const int evasion_bonuses = _player_evasion_bonuses() * scale;
 
-    const int prescaled_evasion =
-        poststepdown_evasion + evasion_bonuses;
-
     const int final_evasion =
-        _player_scale_evasion(prescaled_evasion, scale);
+        _player_scale_evasion(poststepdown_evasion, scale) + evasion_bonuses;
 
     return unscale_round_up(final_evasion, scale);
 }
@@ -2902,21 +2913,7 @@ void level_change(bool skip_attribute_increase)
             case SP_BASE_DRACONIAN:
                 if (you.experience_level >= 7)
                 {
-#if TAG_MAJOR_VERSION == 34
-                    // Hack to evade mottled draconians.
-                    do
-                    {
-                        you.species = static_cast<species_type>(
-                                       random_range(SP_FIRST_NONBASE_DRACONIAN,
-                                                    SP_LAST_NONBASE_DRACONIAN));
-                    }
-                    while (you.species == SP_MOTTLED_DRACONIAN);
-#endif
-#if TAG_MAJOR_VERSION > 34
-                    you.species = static_cast<species_type>(
-                                       random_range(SP_FIRST_NONBASE_DRACONIAN,
-                                                    SP_LAST_NONBASE_DRACONIAN));
-#endif
+                    you.species = random_draconian_colour();
 
                     // We just changed our aptitudes, so some skills may now
                     // be at the wrong level (with negative progress); if we
@@ -5044,6 +5041,15 @@ int count_worn_ego(int which_ego)
 
 player::player()
 {
+    // warning: this constructor is called for `you` in an indeterminate order
+    // with respect to other globals, and so anything that depends on a global
+    // you should not do here. This includes things like `branches`, as well as
+    // any const static string prop name -- any object that needs to call a
+    // constructor is risky, and may or may not have called it yet. E.g. strings
+    // could be empty, branches could have every branch set as the dungeon, etc.
+    // One candidate location is startup.cc:_initialize, which is nearly the
+    // first things called in the launch game loop.
+
     chr_god_name.clear();
     chr_species_name.clear();
     chr_class_name.clear();
@@ -5274,7 +5280,8 @@ player::player()
     shield_blocks       = 0;
 
     abyss_speed         = 0;
-    game_seed = get_uint32();
+    game_seed           = 0;
+    game_is_seeded      = true;
 
     old_hunger          = hunger;
 
@@ -6358,7 +6365,10 @@ string player::no_tele_reason(bool calc_unid, bool blinking) const
         if (crawl_state.game_is_sprint())
             return "Long-range teleportation is disallowed in Dungeon Sprint.";
         else if (player_in_branch(BRANCH_GAUNTLET))
-            return "Long-range teleportation does not work in a Gauntlet.";
+        {
+            return "A magic seal in the Gauntlet prevents long-range "
+                "teleports.";
+        }
     }
 
     if (stasis())
@@ -6466,7 +6476,7 @@ bool player::permanent_flight() const
 
 bool player::racial_permanent_flight() const
 {
-    return get_mutation_level(MUT_TENGU_FLIGHT) >= 2
+    return get_mutation_level(MUT_TENGU_FLIGHT)
         || get_mutation_level(MUT_BIG_WINGS);
 }
 
@@ -6666,11 +6676,11 @@ void player::splash_with_acid(const actor* evildoer, int acid_strength,
     const int dam = roll_dice(4, acid_strength);
     const int post_res_dam = resist_adjust_damage(&you, BEAM_ACID, dam);
 
-    mpr("You are splashed with acid!");
+    mprf("You are splashed with acid%s%s",
+         post_res_dam > 0 ? "" : " but take no damage",
+         attack_strength_punctuation(post_res_dam).c_str());
     if (post_res_dam > 0)
     {
-        mpr(hurt_msg ? hurt_msg : "The acid burns!");
-
         if (post_res_dam < dam)
             canned_msg(MSG_YOU_RESIST);
 
@@ -6726,7 +6736,7 @@ void player::paralyse(actor *who, int str, string source)
     {
         take_note(Note(NOTE_PARALYSIS, str, 0, source));
         // use the real name here even for invisible monsters
-        props["paralysed_by"] = use_actor_name ? who->name(DESC_A, true)
+        props[PARALYSED_BY_KEY] = use_actor_name ? who->name(DESC_A, true)
                                                : source;
     }
 
@@ -6772,6 +6782,9 @@ void player::petrify(actor *who, bool force)
         return;
 
     duration[DUR_PETRIFYING] = 3 * BASELINE_DELAY;
+
+    if (who)
+        props[PETRIFIED_BY_KEY] = who->name(DESC_A, true);
 
     redraw_evasion = true;
     mprf(MSGCH_WARN, "You are slowing down.");
@@ -7156,7 +7169,7 @@ bool player::malmutate(const string &reason)
     return false;
 }
 
-bool player::polymorph(int pow)
+bool player::polymorph(int pow, bool allow_immobile)
 {
     ASSERT(!crawl_state.game_is_arena());
 
@@ -7165,19 +7178,25 @@ bool player::polymorph(int pow)
 
     transformation f = transformation::none;
 
-    // Be unreliable over lava. This is not that important as usually when
-    // it matters you'll have temp flight and thus that pig will fly (and
-    // when flight times out, we'll have roasted bacon).
+    vector<transformation> forms = {
+        transformation::bat,
+        transformation::wisp,
+        transformation::pig,
+    };
+    if (allow_immobile)
+    {
+        forms.emplace_back(transformation::tree);
+        forms.emplace_back(transformation::fungus);
+    }
+
     for (int tries = 0; tries < 3; tries++)
     {
-        f = random_choose(transformation::bat,
-                          transformation::fungus,
-                          transformation::pig,
-                          transformation::tree,
-                          transformation::wisp);
+        f = forms[random2(forms.size())];
+
         // need to do a dry run first, as Zin's protection has a random factor
         if (transform(pow, f, true, true))
             break;
+
         f = transformation::none;
     }
 
@@ -7457,7 +7476,8 @@ bool player::attempt_escape(int attempts)
     const string object = direct ? themonst->name(DESC_ITS, true)
                                  : "the roots'";
     // player breaks free if (4+n)d13 >= 5d(8+HD/4)
-    if (roll_dice(4 + escape_attempts, 13)
+    const int escape_score = roll_dice(4 + escape_attempts, 13);
+    if (escape_score
         >= roll_dice(5, 8 + div_rand_round(themonst->get_hit_dice(), 4)))
     {
         mprf("You escape %s grasp.", object.c_str());
@@ -7874,21 +7894,23 @@ void player_open_door(coord_def doorpos)
     vector<coord_def> excludes;
     for (const auto &dc : all_door)
     {
+        if (cell_is_runed(dc))
+            explored_tracked_feature(grd(dc));
+        dgn_open_door(dc);
+        set_terrain_changed(dc);
+        dungeon_events.fire_position_event(DET_DOOR_OPENED, dc);
+
         // Even if some of the door is out of LOS, we want the entire
         // door to be updated. Hitting this case requires a really big
         // door!
         if (env.map_knowledge(dc).seen())
         {
-            env.map_knowledge(dc).set_feature(DNGN_OPEN_DOOR);
+            env.map_knowledge(dc).set_feature(grd(dc));
 #ifdef USE_TILE
-            env.tile_bk_bg(dc) = TILE_DNGN_OPEN_DOOR;
+            env.tile_bk_bg(dc) = tileidx_feature_base(grd(dc));
 #endif
         }
-        if (grd(dc) == DNGN_RUNED_DOOR)
-            explored_tracked_feature(grd(dc));
-        grd(dc) = DNGN_OPEN_DOOR;
-        set_terrain_changed(dc);
-        dungeon_events.fire_position_event(DET_DOOR_OPENED, dc);
+
         if (is_excluded(dc))
             excludes.push_back(dc);
     }
@@ -8044,7 +8066,7 @@ void player_close_door(coord_def doorpos)
     for (const coord_def& dc : all_door)
     {
         // Once opened, formerly runed doors become normal doors.
-        grd(dc) = DNGN_CLOSED_DOOR;
+        dgn_close_door(dc);
         set_terrain_changed(dc);
         dungeon_events.fire_position_event(DET_DOOR_CLOSED, dc);
 
@@ -8053,11 +8075,12 @@ void player_close_door(coord_def doorpos)
         // want the entire door to be updated.
         if (env.map_knowledge(dc).seen())
         {
-            env.map_knowledge(dc).set_feature(DNGN_CLOSED_DOOR);
+            env.map_knowledge(dc).set_feature(grd(dc));
 #ifdef USE_TILE
-            env.tile_bk_bg(dc) = TILE_DNGN_CLOSED_DOOR;
+            env.tile_bk_bg(dc) = tileidx_feature_base(grd(dc));
 #endif
         }
+
         if (is_excluded(dc))
             excludes.push_back(dc);
     }

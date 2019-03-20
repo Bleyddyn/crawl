@@ -1,0 +1,65 @@
+enum: SP_SHAPESHIFTER
+monster: MONS_SHAPESHIFTER
+name: Shapeshifter
+short_name: Ss
+adjective: Shifter
+genus: Shifter
+difficulty: Advanced
+difficulty_priority: 0
+species_flags:
+  - hairless
+aptitudes:
+  xp: 0
+  hp: 0
+  mp_mod: 0
+  mr: 3
+  fighting: 0
+  short_blades: -2
+  axes: -2
+  maces_and_flails: 0
+  polearms: -2
+  staves: 0
+  slings: -2
+  bows: -2
+  crossbows: -2
+  throwing: 0
+  armour: -1
+  dodging: 1
+  stealth: 1
+  shields: -1
+  unarmed_combat: 2
+  spellcasting: -3
+  conjurations: -2
+  hexes: -2
+  charms: -2
+  summoning: -2
+  necromancy: -2
+  translocations: -2
+  transmutations: 1
+  fire_magic: -2
+  ice_magic: -2
+  air_magic: -2
+  earth_magic: -2
+  poison_magic: -2
+  invocations: 0
+  evocations: -1
+str: 9
+int: 7
+dex: 8
+levelup_stat_frequency: 4
+levelup_stats: default
+mutations:
+  1:
+    MUT_CLAWS: 2
+    MUT_FANGS: 2
+fake_mutations:
+  - long: Constantly changing body shape
+    short: changing shape
+recommended_jobs:
+  - JOB_FIGHTER
+  - JOB_BERSERKER
+  - JOB_MONK
+  - JOB_GLADIATOR
+recommended_weapons:
+  - SK_UNARMED_COMBAT
+create_enum: false

@@ -13,6 +13,7 @@
 #include "areas.h"
 #include "artefact.h"
 #include "art-enum.h"
+#include "attack.h"
 #include "attitude-change.h"
 #include "bloodspatter.h"
 #include "branch.h"
@@ -705,7 +706,7 @@ bool monster::search_spells(function<bool (spell_type)> func) const
                         { return func(s.spell); });
 }
 
-bool monster::has_spell_of_type(spschool_flag_type discipline) const
+bool monster::has_spell_of_type(spschool discipline) const
 {
     return search_spells(bind(spell_typematch, placeholders::_1, discipline));
 }
@@ -733,11 +734,11 @@ void monster::bind_spell_flags()
 static bool _needs_ranged_attack(const monster* mon)
 {
     // Prevent monsters that have conjurations from grabbing missiles.
-    if (mon->has_spell_of_type(SPTYP_CONJURATION))
+    if (mon->has_spell_of_type(spschool::conjuration))
         return false;
 
     // Same for summonings, but make an exception for friendlies.
-    if (!mon->friendly() && mon->has_spell_of_type(SPTYP_SUMMONING))
+    if (!mon->friendly() && mon->has_spell_of_type(spschool::summoning))
         return false;
 
     // Blademasters don't want to throw stuff.
@@ -4189,7 +4190,7 @@ int monster::skill(skill_type sk, int scale, bool real, bool drained, bool temp)
         return hd;
 
     case SK_NECROMANCY:
-        return (has_spell_of_type(SPTYP_NECROMANCY)) ? hd : hd/2;
+        return (has_spell_of_type(spschool::necromancy)) ? hd : hd/2;
 
     case SK_POISON_MAGIC:
     case SK_FIRE_MAGIC:
@@ -4287,8 +4288,8 @@ bool monster::drain_exp(actor *agent, bool quiet, int pow)
 
     if (alive())
     {
-        int dur = min(200 + random2(100),
-                      300 - get_ench(ENCH_DRAINED).duration - random2(50));
+        int dur = 200 + random2(100);
+        dur = min(dur, 300 - get_ench(ENCH_DRAINED).duration - random2(50));
 
         if (res_negative_energy())
             dur /= (res_negative_energy() * 2);
@@ -4370,7 +4371,10 @@ void monster::splash_with_acid(const actor* evildoer, int /*acid_strength*/,
     const int post_res_dam = resist_adjust_damage(this, BEAM_ACID, dam);
 
     if (this->observable())
-         mprf("%s is splashed with acid.", this->name(DESC_THE).c_str());
+    {
+        mprf("%s is splashed with acid%s", this->name(DESC_THE).c_str(),
+             attack_strength_punctuation(post_res_dam).c_str());
+    }
 
     if (!one_chance_in(3))
         corrode_equipment();
@@ -4671,7 +4675,7 @@ bool monster::is_trap_safe(const coord_def& where, bool just_check) const
         return true;
     const trap_def& trap = *ptrap;
 
-    // Known shafts are safe. Unknown ones are unknown.
+    // Known shafts are safe.
     if (trap.type == TRAP_SHAFT)
         return true;
 
@@ -4680,9 +4684,9 @@ bool monster::is_trap_safe(const coord_def& where, bool just_check) const
         return true;
 #endif
 
-    // No friendly monsters will ever enter a trap that harms the player
-    // when triggered.
-    if (friendly() && trap.is_bad_for_player())
+    // No friendly or good neutral monsters will ever enter a trap that harms
+    // the player when triggered.
+    if (wont_attack() && trap.is_bad_for_player())
         return false;
 
     // Dumb monsters don't care at all.
@@ -4693,47 +4697,6 @@ bool monster::is_trap_safe(const coord_def& where, bool just_check) const
     if (berserk_or_insane())
         return true;
 
-    // Hostile monsters are not afraid of non-mechanical traps.
-    // Allies will try to avoid teleportation and zot traps.
-    const bool mechanical = (trap.category() == DNGN_TRAP_MECHANICAL);
-
-    if (trap.is_known(this))
-    {
-        if (just_check)
-            return false; // Square is blocked.
-
-        // Test for corridor-like environment.
-        const int x = where.x - pos().x;
-        const int y = where.y - pos().y;
-
-        // The question is whether the monster (m) can easily reach its
-        // presumable destination (x) without stepping on the trap. Traps
-        // in corridors do not allow this. See e.g
-        //  #x#        ##
-        //  #^#   or  m^x
-        //   m         ##
-        //
-        // The same problem occurs if paths are blocked by monsters,
-        // hostile terrain or other traps rather than walls.
-        // What we do is check whether the squares with the relative
-        // positions (-1,0)/(+1,0) or (0,-1)/(0,+1) form a "corridor"
-        // (relative to the _trap_ position rather than the monster one).
-        // If they don't, the trap square is marked as "unsafe" (because
-        // there's a good alternative move for the monster to take),
-        // otherwise the decision will be made according to later tests
-        // (monster hp, trap type, ...)
-        // If a monster still gets stuck in a corridor it will usually be
-        // because it has less than half its maximum hp.
-
-        if ((mon_can_move_to_pos(this, coord_def(x-1, y), true)
-             || mon_can_move_to_pos(this, coord_def(x+1,y), true))
-            && (mon_can_move_to_pos(this, coord_def(x,y-1), true)
-                || mon_can_move_to_pos(this, coord_def(x,y+1), true)))
-        {
-            return false;
-        }
-    }
-
     // Friendlies will try not to be parted from you.
     if (intelligent_ally(*this) && (trap.type == TRAP_TELEPORT
                                    || trap.type == TRAP_TELEPORT_PERMANENT)
@@ -4742,31 +4705,61 @@ bool monster::is_trap_safe(const coord_def& where, bool just_check) const
         return false;
     }
 
+    // Hostile monsters are not afraid of non-mechanical traps.
+    // But, in the arena Zot traps affect all monsters.
+    if (trap.category() != DNGN_TRAP_MECHANICAL)
+        return !crawl_state.game_is_arena() || trap.type != TRAP_ZOT;
+
+    // Net traps always target the player, let's use them!
+    if (trap.type == TRAP_NET)
+        return true;
+
+    // If just checking a mechanical trap is dangerous
+    if (just_check)
+        return false;
+
+    // Mechanical trap calculations
+    // Test for corridor-like environment.
+    const int x = where.x - pos().x;
+    const int y = where.y - pos().y;
+
+    // The question is whether the monster (m) can easily reach its
+    // presumable destination (x) without stepping on the trap. Traps
+    // in corridors do not allow this. See e.g
+    //  #x#        ##
+    //  #^#   or  m^x
+    //   m         ##
+    //
+    // The same problem occurs if paths are blocked by monsters,
+    // hostile terrain or other traps rather than walls.
+    // What we do is check whether the squares with the relative
+    // positions (-1,0)/(+1,0) or (0,-1)/(0,+1) form a "corridor"
+    // (relative to the _trap_ position rather than the monster one).
+    // If they don't, the trap square is marked as "unsafe" (because
+    // there's a good alternative move for the monster to take),
+    // otherwise the decision will be made according to later tests
+    // (monster hp, trap type, ...)
+    // If a monster still gets stuck in a corridor it will usually be
+    // because it has less than half its maximum hp.
+
+    if ((mon_can_move_to_pos(this, coord_def(x-1, y), true)
+         || mon_can_move_to_pos(this, coord_def(x+1,y), true))
+        && (mon_can_move_to_pos(this, coord_def(x,y-1), true)
+            || mon_can_move_to_pos(this, coord_def(x,y+1), true)))
+    {
+        return false;
+    }
+
     // Healthy monsters don't mind a little pain.
-    if (mechanical && hit_points >= max_hit_points / 2
+    if (hit_points >= max_hit_points / 2
         && (intel < I_HUMAN
             || hit_points > _estimated_trap_damage(trap.type)))
     {
         return true;
     }
 
-    // can't avoid traps you don't know about
-    if (!trap.is_known(this))
-        return true;
-
     // we don't think we have enough hp (per above), so avoid mech traps
-    if (mechanical)
-        return false;
-
-    // Friendly and good neutral monsters don't enjoy Zot trap perks;
-    // handle accordingly. In the arena Zot traps affect all monsters.
-
-    // XXX: this logic duplicates the checks for friendly creatures & "traps
-    // that are bad for the player " at the top; probably should be merged
-    // somehow
-    if (wont_attack() || crawl_state.game_is_arena())
-        return trap.type != TRAP_ZOT;
-    return true;
+    return false;
 }
 
 bool monster::is_cloud_safe(const coord_def &place) const
@@ -5328,7 +5321,12 @@ void monster::corrupt()
     malmutate("");
 }
 
-bool monster::polymorph(int pow)
+bool monster::polymorph(int /* pow */, bool /*allow_immobile*/)
+{
+    return polymorph();
+}
+
+bool monster::polymorph(poly_power_type power)
 {
     if (!can_polymorph())
         return false;
@@ -5344,19 +5342,19 @@ bool monster::polymorph(int pow)
     // Polymorphing a shapeshifter will make it revert to its original
     // form.
     if (has_ench(ENCH_GLOWING_SHAPESHIFTER))
-        return monster_polymorph(this, MONS_GLOWING_SHAPESHIFTER);
+        return monster_polymorph(this, MONS_GLOWING_SHAPESHIFTER, power);
     if (has_ench(ENCH_SHAPESHIFTER))
-        return monster_polymorph(this, MONS_SHAPESHIFTER);
+        return monster_polymorph(this, MONS_SHAPESHIFTER, power);
 
     // Polymorphing a slime creature will usually split it first
     // and polymorph each part separately.
     if (type == MONS_SLIME_CREATURE)
     {
-        slime_creature_polymorph(*this);
+        slime_creature_polymorph(*this, power);
         return true;
     }
 
-    return monster_polymorph(this, RANDOM_MONSTER);
+    return monster_polymorph(this, RANDOM_MONSTER, power);
 }
 
 static bool _mons_is_icy(int mc)

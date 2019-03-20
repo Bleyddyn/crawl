@@ -356,3 +356,59 @@ struct monsterentry
     return;
     */
 }
+
+monster_type choose_shape(monster_type current_shape)
+{
+    if(you.shapes.empty())
+    {
+        mprf("You haven't learned any shapes yet.");
+        return current_shape;
+    }
+
+    while (true)
+    {
+        clear_messages();
+
+        int index = 0;
+        for(monster_type mtype: you.shapes)
+        {
+            if ( MONS_PROGRAM_BUG != mtype )
+            {
+                string name = mons_type_name(mtype, DESC_PLAIN);
+                const char letter = index_to_letter(index);
+                mprf("(%c) %s\n", letter, name.c_str());
+                ++index;
+            }
+        }
+
+        string shortcuts = "(";
+        {
+            vector<string> segs;
+            segs.emplace_back("? - help");
+
+            shortcuts += comma_separated_line(segs.begin(), segs.end(),
+                                              ", ", ", ");
+            shortcuts += ") ";
+        }
+
+        mprf(MSGCH_PROMPT, "Change to which form? %s",
+             shortcuts.c_str());
+
+        int keyin = get_ch();
+        switch (keyin)
+        {
+        CASE_ESCAPE
+            return current_shape;
+        case '?':
+            //show_interlevel_travel_branch_help();
+            redraw_screen();
+            break;
+        default:
+            int idx = letter_to_index(keyin);
+            if( idx < you.shapes.size() )
+                return you.shapes[idx];
+            return current_shape;
+        }
+    }
+    return current_shape;
+}

@@ -395,7 +395,7 @@ static const map<spell_type, mons_spell_logic> spell_to_logic = {
             const int splpow = mons_spellpower(caster, slot.spell);
             if ((!in_bounds(pbolt.target)
                  || conjure_flame(&caster, splpow, pbolt.target, false)
-                    != SPRET_SUCCESS)
+                    != spret::success)
                 && you.can_see(caster))
             {
                 canned_msg(MSG_NOTHING_HAPPENS);
@@ -809,7 +809,7 @@ static void _cast_grasping_roots(monster &caster, mon_spell_slot, bolt&)
 static bool _los_spell_worthwhile(const monster &mons, spell_type spell)
 {
     return trace_los_attack_spell(spell, mons_spellpower(mons, spell), &mons)
-           == SPRET_SUCCESS;
+           == spret::success;
 }
 
 /// Set up a fake beam, for noise-generating purposes (?)
@@ -1329,6 +1329,7 @@ bolt mons_spell_beam(const monster* mons, spell_type spell_cast, int power,
     case SPELL_TELEPORT_OTHER:
     case SPELL_SANDBLAST:
     case SPELL_HARPOON_SHOT:
+    case SPELL_THROW_PIE:
         zappy(spell_to_zap(real_spell), power, true, beam);
         break;
 
@@ -1990,8 +1991,8 @@ static bool _animate_dead_okay(spell_type spell)
 // non-beam spells.
 static bool _ms_direct_nasty(spell_type monspell)
 {
-    return !(get_spell_flags(monspell) & SPFLAG_UTILITY
-             || spell_typematch(monspell, SPTYP_SUMMONING));
+    return !(get_spell_flags(monspell) & spflag::utility
+             || spell_typematch(monspell, spschool::summoning));
 }
 
 // Checks if the foe *appears* to be immune to negative energy. We
@@ -2269,7 +2270,7 @@ static void _set_door(set<coord_def> door, dungeon_feature_type feat)
 }
 
 static int _tension_door_closed(set<coord_def> door,
-                                                dungeon_feature_type old_feat)
+                                dungeon_feature_type old_feat)
 {
     // this unwind is a bit heavy, but because out-of-los clouds dissipate
     // instantly, they can be wiped out by these door tests.
@@ -2292,7 +2293,7 @@ static int _tension_door_closed(set<coord_def> door,
  */
 static bool _can_force_door_shut(const coord_def& door)
 {
-    if (grd(door) != DNGN_OPEN_DOOR)
+    if (!feat_is_open_door(grd(door)))
         return false;
 
     set<coord_def> all_door;
@@ -2385,7 +2386,7 @@ static vector<coord_def> _get_push_spaces_max_tension(const coord_def& pos,
  */
 static bool _should_force_door_shut(const coord_def& door)
 {
-    if (grd(door) != DNGN_OPEN_DOOR)
+    if (!feat_is_open_door(grd(door)))
         return false;
 
     dungeon_feature_type old_feat = grd(door);
@@ -2445,7 +2446,7 @@ static bool _seal_doors_and_stairs(const monster* warden,
     for (radius_iterator ri(you.pos(), LOS_RADIUS, C_SQUARE);
                  ri; ++ri)
     {
-        if (grd(*ri) == DNGN_OPEN_DOOR)
+        if (feat_is_open_door(grd(*ri)))
         {
             if (!_can_force_door_shut(*ri))
                 continue;
@@ -2525,16 +2526,19 @@ static bool _seal_doors_and_stairs(const monster* warden,
         }
 
         // Try to seal the door
-        if (grd(*ri) == DNGN_CLOSED_DOOR || grd(*ri) == DNGN_RUNED_DOOR)
+        if (feat_is_closed_door(grd(*ri)) && !feat_is_sealed(grd(*ri)))
         {
             if (check_only)
                 return true;
 
             set<coord_def> all_door;
             find_connected_identical(*ri, all_door);
+            const dungeon_feature_type sealed_feat =
+                opc_default(*ri) == OPC_CLEAR ? DNGN_SEALED_CLEAR_DOOR
+                                              : DNGN_SEALED_DOOR;
             for (const auto &dc : all_door)
             {
-                temp_change_terrain(dc, DNGN_SEALED_DOOR, seal_duration,
+                temp_change_terrain(dc, sealed_feat, seal_duration,
                                     TERRAIN_CHANGE_DOOR_SEAL, warden);
                 had_effect = true;
             }
@@ -2935,8 +2939,10 @@ static bool _place_druids_call_beast(const monster* druid, monster* beast,
     {
         // Attempt to find some random spot out of the target's los to place
         // the beast (but not too far away).
-        coord_def area = clamp_in_bounds(target->pos() + coord_def(random_range(-11, 11),
-                                                                   random_range(-11, 11)));
+        coord_def area_rnd;
+        area_rnd.x = random_range(-11, 11);
+        area_rnd.y = random_range(-11, 11);
+        coord_def area = clamp_in_bounds(target->pos() + area_rnd);
         if (cell_see_cell(target->pos(), area, LOS_DEFAULT))
             continue;
 
@@ -3697,19 +3703,19 @@ bool scattershot_tracer(monster *caster, int pow, coord_def aim)
 /** Chooses a matching spell from this spell list, based on frequency.
  *
  *  @param[in]  spells     the monster spell list to search
- *  @param[in]  flag       what SPFLAG_ the spell should match
+ *  @param[in]  flag       what spflag the spell should match
  *  @return The spell chosen, or a slot containing SPELL_NO_SPELL and
  *          MON_SPELL_NO_FLAGS if no spell was chosen.
  */
 static mon_spell_slot _pick_spell_from_list(const monster_spells &spells,
-                                            int flag)
+                                            spflag flag)
 {
     spell_type spell_cast = SPELL_NO_SPELL;
     mon_spell_slot_flags slot_flags = MON_SPELL_NO_FLAGS;
     int weight = 0;
     for (const mon_spell_slot &slot : spells)
     {
-        int flags = get_spell_flags(slot.spell);
+        spell_flags flags = get_spell_flags(slot.spell);
         if (!(flags & flag))
             continue;
 
@@ -3776,19 +3782,19 @@ static mon_spell_slot _find_spell_prospect(const monster &mons,
     // If we didn't find a spell on the first pass, try a
     // self-enchantment.
     if (prefer_selfench)
-        return _pick_spell_from_list(hspell_pass, SPFLAG_SELFENCH);
+        return _pick_spell_from_list(hspell_pass, spflag::selfench);
 
     // Monsters that are fleeing or pacified and leaving the
     // level will always try to choose an emergency spell.
     if (mons_is_fleeing(mons) || mons.pacified())
     {
         const mon_spell_slot spell = _pick_spell_from_list(hspell_pass,
-                                                           SPFLAG_EMERGENCY);
+                                                           spflag::emergency);
         // Pacified monsters leaving the level will only
         // try and cast escape spells.
         if (spell.spell != SPELL_NO_SPELL
             && mons.pacified()
-            && !testbits(get_spell_flags(spell.spell), SPFLAG_ESCAPE))
+            && !testbits(get_spell_flags(spell.spell), spflag::escape))
         {
             return { SPELL_NO_SPELL, 0, MON_SPELL_NO_FLAGS };
         }
@@ -3836,7 +3842,7 @@ static bool _should_cast_spell(const monster &mons, spell_type spell,
                                bolt &beem, bool ignore_good_idea)
 {
     // beam-type spells requiring tracers
-    if (get_spell_flags(spell) & SPFLAG_NEEDS_TRACER)
+    if (get_spell_flags(spell) & spflag::needs_tracer)
     {
         const bool explode = spell_is_direct_explosion(spell);
         fire_tracer(&mons, beem, explode);
@@ -4185,7 +4191,7 @@ bool handle_mon_spell(monster* mons)
     else
     {
         const bool battlesphere = mons->props.exists("battlesphere");
-        if (!(get_spell_flags(spell_cast) & SPFLAG_UTILITY))
+        if (!(get_spell_flags(spell_cast) & spflag::utility))
             make_mons_stop_fleeing(mons);
 
         if (battlesphere)
@@ -4298,7 +4304,7 @@ static int _monster_abjuration(const monster* caster, bool actual)
 
 static bool _mons_will_abjure(monster* mons, spell_type spell)
 {
-    if (get_spell_flags(spell) & SPFLAG_MONS_ABJURE
+    if (get_spell_flags(spell) & spflag::mons_abjure
         && _monster_abjuration(mons, false) > 0
         && one_chance_in(3))
     {
@@ -4476,7 +4482,8 @@ static void _mons_vampiric_drain(monster &mons, mon_spell_slot slot, bolt&)
         return;
 
     const int pow = mons_spellpower(mons, slot.spell);
-    int hp_cost = 3 + random2avg(9, 2) + 1 + random2(pow) / 7;
+    int hp_cost = 3 + random2avg(9, 2) + 1;
+    hp_cost += random2(pow) / 7; // force a sequence point between random calls
 
     hp_cost = min(hp_cost, target->stat_hp());
     hp_cost = min(hp_cost, mons.max_hit_points - mons.hit_points);
@@ -5611,10 +5618,7 @@ static void _mons_upheaval(monster& mons, actor& foe)
                      || grd(pos) == DNGN_CLEAR_ROCK_WALL
                      || grd(pos) == DNGN_SLIMY_WALL)
                      && x_chance_in_y(1, 4)
-                     || grd(pos) == DNGN_CLOSED_DOOR
-                     || grd(pos) == DNGN_RUNED_DOOR
-                     || grd(pos) == DNGN_OPEN_DOOR
-                     || grd(pos) == DNGN_SEALED_DOOR
+                     || feat_is_door(grd(pos))
                      || grd(pos) == DNGN_GRATE))
                 {
                     noisy(30, pos);
@@ -5721,7 +5725,7 @@ void mons_cast(monster* mons, bolt pbolt, spell_type spell_cast,
     setup_mons_cast(mons, pbolt, spell_cast);
 
     // single calculation permissible {dlb}
-    const unsigned int flags = get_spell_flags(spell_cast);
+    const spell_flags flags = get_spell_flags(spell_cast);
     actor* const foe = mons->get_foe();
     const mons_spell_logic* logic = map_find(spell_to_logic, spell_cast);
     const mon_spell_slot slot = {spell_cast, 0, slot_flags};
@@ -5732,10 +5736,10 @@ void mons_cast(monster* mons, bolt pbolt, spell_type spell_cast,
 
     dprf("Mon #%d casts %s (#%d)",
          mons->mindex(), spell_title(spell_cast), spell_cast);
-    ASSERT(!(flags & SPFLAG_TESTING));
+    ASSERT(!(flags & spflag::testing));
     // Targeted spells need a valid target.
     // Wizard-mode cast monster spells may target the boundary (shift-dir).
-    ASSERT(map_bounds(pbolt.target) || !(flags & SPFLAG_TARGETING_MASK));
+    ASSERT(map_bounds(pbolt.target) || !(flags & spflag::targeting_mask));
 
     // Maybe cast abjuration instead of certain summoning spells.
     if (mons->can_see(you) && _mons_will_abjure(mons, spell_cast))
@@ -6163,9 +6167,9 @@ void mons_cast(monster* mons, bolt pbolt, spell_type spell_cast,
     case SPELL_BROTHERS_IN_ARMS:
     {
         // Invocation; don't use spell_hd
-        const int power = (mons->get_hit_dice() * 20)
-                          + random2(mons->get_hit_dice() * 5)
-                          - random2(mons->get_hit_dice() * 5);
+        int power = (mons->get_hit_dice() * 20)
+                          + random2(mons->get_hit_dice() * 5);
+        power -= random2(mons->get_hit_dice() * 5); // force a sequence point
         monster_type to_summon;
 
         if (mons->type == MONS_SPRIGGAN_BERSERKER)
@@ -6269,8 +6273,8 @@ void mons_cast(monster* mons, bolt pbolt, spell_type spell_cast,
     }
 
     case SPELL_SUMMON_HOLIES: // Holy monsters.
-        sumcount2 = 1 + random2(2)
-                      + random2(mons->spell_hd(spell_cast) / 4 + 1);
+        sumcount2 = 1 + random2(2); // sequence point
+        sumcount2 += random2(mons->spell_hd(spell_cast) / 4 + 1);
 
         duration  = min(2 + mons->spell_hd(spell_cast) / 5, 6);
         for (int i = 0; i < sumcount2; ++i)
@@ -6321,6 +6325,7 @@ void mons_cast(monster* mons, bolt pbolt, spell_type spell_cast,
         static const set<dungeon_feature_type> safe_tiles =
         {
             DNGN_SHALLOW_WATER, DNGN_FLOOR, DNGN_OPEN_DOOR,
+            DNGN_OPEN_CLEAR_DOOR
         };
 
         for (adjacent_iterator ai(mons->pos()); ai; ++ai)
@@ -6511,8 +6516,10 @@ void mons_cast(monster* mons, bolt pbolt, spell_type spell_cast,
                  apostrophise(mons->name(DESC_THE)).c_str());
         }
         const int power = (mons->spell_hd(spell_cast) * 15) / 10;
+        const int rnd_power = random2(power); // sequence point
+        const int two_rnd_powers = rnd_power + random2(power);
         mons->add_ench(mon_enchant(ENCH_OZOCUBUS_ARMOUR,
-                                   20 + random2(power) + random2(power),
+                                   20 + two_rnd_powers,
                                    mons));
 
         return;
@@ -6883,14 +6890,14 @@ void mons_cast(monster* mons, bolt pbolt, spell_type spell_cast,
 static int _noise_level(const monster* mons, spell_type spell,
                         bool silent, mon_spell_slot_flags slot_flags)
 {
-    const unsigned int flags = get_spell_flags(spell);
+    const spell_flags flags = get_spell_flags(spell);
 
     int noise;
 
     if (silent
         || (slot_flags & MON_SPELL_INNATE_MASK
             && !(slot_flags & MON_SPELL_NOISY)
-            && !(flags & SPFLAG_NOISY)))
+            && !(flags & spflag::noisy)))
     {
         noise = 0;
     }
@@ -7244,8 +7251,8 @@ void mons_cast_noise(monster* mons, const bolt &pbolt,
 
     int noise = _noise_level(mons, spell_cast, silent, slot_flags);
 
-    const unsigned int spell_flags = get_spell_flags(spell_cast);
-    const bool targeted = (spell_flags & SPFLAG_TARGETING_MASK)
+    const spell_flags spflags = get_spell_flags(spell_cast);
+    const bool targeted = (spflags & spflag::targeting_mask)
                            && (pbolt.target != mons->pos()
                                || pbolt.visible());
 
@@ -7695,7 +7702,7 @@ static bool _ms_waste_of_time(monster* mon, mon_spell_slot slot)
     const bool friendly = mon->friendly();
 
     // Keep friendly summoners from spamming summons constantly.
-    if (friendly && !foe && spell_typematch(monspell, SPTYP_SUMMONING))
+    if (friendly && !foe && spell_typematch(monspell, spschool::summoning))
         return true;
 
     // Don't try to cast spells at players who are stepped from time.
@@ -8042,9 +8049,9 @@ static bool _ms_waste_of_time(monster* mon, mon_spell_slot slot)
 
     case SPELL_OLGREBS_TOXIC_RADIANCE:
         return mon->has_ench(ENCH_TOXIC_RADIANCE)
-               || cast_toxic_radiance(mon, 100, false, true) != SPRET_SUCCESS;
+               || cast_toxic_radiance(mon, 100, false, true) != spret::success;
     case SPELL_IGNITE_POISON:
-        return cast_ignite_poison(mon, 0, false, true) != SPRET_SUCCESS;
+        return cast_ignite_poison(mon, 0, false, true) != spret::success;
 
     case SPELL_GLACIATE:
         return !foe

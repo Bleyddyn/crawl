@@ -1454,6 +1454,7 @@ static void _pre_monster_move(monster& mons)
     reset_spectral_weapon(&mons);
 
     fedhas_neutralise(&mons);
+    slime_convert(&mons);
 
     // Monster just summoned (or just took stairs), skip this action.
     if (testbits(mons.flags, MF_JUST_SUMMONED))
@@ -2650,7 +2651,7 @@ static void _mons_open_door(monster& mons, const coord_def &pos)
         if (you.see_cell(dc))
             was_seen = true;
 
-        grd(dc) = DNGN_OPEN_DOOR;
+        dgn_open_door(dc);
         set_terrain_changed(dc);
     }
 

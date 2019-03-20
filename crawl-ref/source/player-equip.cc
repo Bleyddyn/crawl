@@ -731,8 +731,8 @@ static void _unequip_weapon_effect(item_def& real_item, bool showMsgs,
                     // Makes no sense to discourage unwielding a temporarily
                     // branded weapon since you can wait it out. This also
                     // fixes problems with unwield prompts (mantis #793).
-                    MiscastEffect(&you, nullptr, WIELD_MISCAST,
-                                  SPTYP_TRANSLOCATION, 9, 90,
+                    MiscastEffect(&you, nullptr, {miscast_source::wield},
+                                  spschool::translocation, 9, 90,
                                   "a distortion unwield");
                 }
                 break;
@@ -1177,14 +1177,12 @@ static void _equip_amulet_of_the_acrobat()
     }
 }
 
-bool acrobat_boost_visible()
+bool acrobat_boost_active()
 {
-    // If you have an active amulet of the acrobat and just moved, show the
-    // boost. We also display this bonus if the duration isn't in effect but
-    // it was during the last move. It's a little hacky.
     return you.props[ACROBAT_AMULET_ACTIVE].get_int() == 1
-           && (you.duration[DUR_ACROBAT]
-               || you.props[LAST_ACTION_WAS_MOVE_OR_REST_KEY].get_bool());
+           && you.duration[DUR_ACROBAT]
+           && (!you.caught())
+           && (!you.is_constricted());
 }
 
 static void _equip_amulet_of_mana_regeneration()
